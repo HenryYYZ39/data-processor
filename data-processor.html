@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>数据合并处理工具 v7</title>
+    <title>数据合并处理工具 v8</title>
     <!-- SheetJS (xlsx) -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <!-- Chart.js -->
@@ -1004,11 +1004,18 @@
 
             try {
                 // 创建OSS客户端
+                // 从 endpoint 提取 region，例如：oss-cn-shanghai.aliyuncs.com -> oss-cn-shanghai
+                let region = endpoint;
+                if (endpoint.includes('.aliyuncs.com')) {
+                    region = endpoint.replace('.aliyuncs.com', '');
+                }
+                
                 const client = new OSS({
-                    region: endpoint.replace('oss-', '').replace('.aliyuncs.com', ''),
+                    region: region,
                     accessKeyId: accessKeyId,
                     accessKeySecret: accessKeySecret,
-                    bucket: bucket
+                    bucket: bucket,
+                    secure: true  // 使用 HTTPS
                 });
 
                 // 生成文件名
