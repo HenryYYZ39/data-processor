@@ -3,11 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>数据合并处理工具 v6</title>
+    <title>数据合并处理工具 v7</title>
     <!-- SheetJS (xlsx) -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- 阿里云OSS SDK -->
+    <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -233,6 +235,80 @@
             font-size: 0.9rem;
             color: #333;
         }
+        .oss-config {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f0f4ff;
+            border-radius: 8px;
+            border: 1px solid #667eea;
+        }
+        .oss-config h4 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1rem;
+        }
+        .oss-config .input-group {
+            margin-bottom: 10px;
+        }
+        .oss-config label {
+            display: inline-block;
+            width: 120px;
+            color: #666;
+            font-size: 0.9rem;
+        }
+        .oss-config input {
+            width: calc(100% - 130px);
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        .oss-config input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .oss-btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background: #ff6b6b;
+            color: white;
+            text-decoration: none;
+            border-radius: 25px;
+            font-weight: 500;
+            transition: background 0.2s;
+            margin-top: 10px;
+            border: none;
+            cursor: pointer;
+        }
+        .oss-btn:hover {
+            background: #ee5a5a;
+        }
+        .oss-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .oss-status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            display: none;
+        }
+        .oss-status.success {
+            display: block;
+            background: #d4edda;
+            color: #155724;
+        }
+        .oss-status.error {
+            display: block;
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .oss-status.loading {
+            display: block;
+            background: #fff3cd;
+            color: #856404;
+        }
     </style>
 </head>
 <body>
@@ -288,6 +364,34 @@
         <div class="result" id="result">
             <h3>✅ 处理完成！</h3>
             <a href="#" class="download-btn" id="downloadBtn" onclick="downloadExcel()">📥 下载合并后的 Excel</a>
+            
+            <!-- OSS上传配置 -->
+            <div class="oss-config" id="ossConfig">
+                <h4>☁️ 上传到阿里云OSS（可选）</h4>
+                <div class="input-group">
+                    <label>Bucket名称：</label>
+                    <input type="text" id="ossBucket" placeholder="your-bucket-name">
+                </div>
+                <div class="input-group">
+                    <label>Endpoint：</label>
+                    <input type="text" id="ossEndpoint" placeholder="oss-cn-hangzhou.aliyuncs.com">
+                </div>
+                <div class="input-group">
+                    <label>AccessKey ID：</label>
+                    <input type="text" id="ossAccessKeyId" placeholder="LTAI...">
+                </div>
+                <div class="input-group">
+                    <label>AccessKey Secret：</label>
+                    <input type="password" id="ossAccessKeySecret" placeholder="your-secret-key">
+                </div>
+                <div class="input-group">
+                    <label>存储路径：</label>
+                    <input type="text" id="ossPath" placeholder="data/" value="data/">
+                </div>
+                <button class="oss-btn" id="ossBtn" onclick="uploadToOSS()">📤 直接上传到OSS</button>
+                <div class="oss-status" id="ossStatus"></div>
+            </div>
+            
             <div class="preview" id="preview"></div>
         </div>
     </div>
@@ -860,6 +964,70 @@
             if (window.generatedWorkbook) {
                 const date = new Date().toISOString().split('T')[0];
                 XLSX.writeFile(window.generatedWorkbook, `合并数据_${date}.xlsx`);
+            }
+        }
+
+        // 生成Excel文件的Blob
+        function generateExcelBlob() {
+            if (!window.generatedWorkbook) return null;
+            const wbout = XLSX.write(window.generatedWorkbook, { bookType: 'xlsx', type: 'array' });
+            return new Blob([wbout], { type: 'application/octet-stream' });
+        }
+
+        // 上传到阿里云OSS
+        async function uploadToOSS() {
+            const bucket = document.getElementById('ossBucket').value.trim();
+            const endpoint = document.getElementById('ossEndpoint').value.trim();
+            const accessKeyId = document.getElementById('ossAccessKeyId').value.trim();
+            const accessKeySecret = document.getElementById('ossAccessKeySecret').value.trim();
+            const path = document.getElementById('ossPath').value.trim() || 'data/';
+            const statusDiv = document.getElementById('ossStatus');
+            const btn = document.getElementById('ossBtn');
+
+            // 验证输入
+            if (!bucket || !endpoint || !accessKeyId || !accessKeySecret) {
+                statusDiv.className = 'oss-status error';
+                statusDiv.textContent = '请填写完整的OSS配置信息';
+                return;
+            }
+
+            const blob = generateExcelBlob();
+            if (!blob) {
+                statusDiv.className = 'oss-status error';
+                statusDiv.textContent = '请先生成Excel文件';
+                return;
+            }
+
+            btn.disabled = true;
+            statusDiv.className = 'oss-status loading';
+            statusDiv.textContent = '正在上传...';
+
+            try {
+                // 创建OSS客户端
+                const client = new OSS({
+                    region: endpoint.replace('oss-', '').replace('.aliyuncs.com', ''),
+                    accessKeyId: accessKeyId,
+                    accessKeySecret: accessKeySecret,
+                    bucket: bucket
+                });
+
+                // 生成文件名
+                const date = new Date();
+                const filename = `合并数据_${date.toISOString().split('T')[0]}_${date.getTime()}.xlsx`;
+                const objectName = path + filename;
+
+                // 上传文件
+                const result = await client.put(objectName, blob);
+
+                statusDiv.className = 'oss-status success';
+                statusDiv.innerHTML = `✅ 上传成功！<br>文件地址：<a href="${result.url}" target="_blank">${result.url}</a>`;
+
+            } catch (error) {
+                console.error('OSS上传失败:', error);
+                statusDiv.className = 'oss-status error';
+                statusDiv.textContent = '上传失败: ' + (error.message || '请检查配置信息');
+            } finally {
+                btn.disabled = false;
             }
         }
     </script>
