@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>数据合并处理工具 v3</title>
+    <title>数据合并处理工具 v4</title>
     <!-- SheetJS (xlsx) -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <style>
@@ -568,8 +568,8 @@
             
             let timeColIndex = 0;
             let x1ColIndex = -1, x2ColIndex = -1, y1ColIndex = -1, y2ColIndex = -1, zColIndex = -1;
-            let tempColIndex = -1, voltageColIndex = -1;
-            const untitledColIndices = [];
+            let voltageColIndex = -1;
+            const tempColIndices = []; // 存储所有温度列索引
             
             for (let i = 0; i < headers.length; i++) {
                 const colLower = String(headers[i]).toLowerCase().trim();
@@ -583,28 +583,20 @@
                     y2ColIndex = i;
                 } else if (colLower === 'z') {
                     zColIndex = i;
-                } else if (colLower.includes('temp') || colLower.includes('温度')) {
-                    tempColIndex = i;
                 } else if (colLower.includes('volt') || colLower.includes('电压')) {
                     voltageColIndex = i;
                 } else if (colLower.includes('untitled')) {
-                    untitledColIndices.push(i);
-                }
-            }
-            
-            // 从 Untitled 列中识别温度列（值范围 5-40）和电压列（值范围 0-1）
-            if (untitledColIndices.length > 0 && rawExcelData.data.length > 1) {
-                for (const idx of untitledColIndices) {
-                    // 检查第二行数据（第一行是表头）
-                    const sampleValue = parseFloat(rawExcelData.data[1][idx]);
-                    if (!isNaN(sampleValue)) {
-                        // 温度范围 5-40
-                        if (sampleValue >= 5 && sampleValue <= 40 && tempColIndex < 0) {
-                            tempColIndex = idx;
-                        }
-                        // 电压范围 0-1
-                        else if (sampleValue >= 0 && sampleValue <= 1 && voltageColIndex < 0) {
-                            voltageColIndex = idx;
+                    // 检查该列是否为温度数据（值范围 5-40）
+                    if (rawExcelData.data.length > 1) {
+                        const sampleValue = parseFloat(rawExcelData.data[1][i]);
+                        if (!isNaN(sampleValue) && sampleValue >= 5 && sampleValue <= 40) {
+                            tempColIndices.push({
+                                index: i,
+                                header: headers[i]
+                            });
+                        } else if (!isNaN(sampleValue) && sampleValue >= 0 && sampleValue <= 1 && voltageColIndex < 0) {
+                            // 电压范围 0-1
+                            voltageColIndex = i;
                         }
                     }
                 }
@@ -618,9 +610,8 @@
                 y1ColIndex: y1ColIndex,
                 y2ColIndex: y2ColIndex,
                 zColIndex: zColIndex,
-                tempColIndex: tempColIndex,
+                tempColIndices: tempColIndices,  // 所有温度列
                 voltageColIndex: voltageColIndex,
-                untitledColIndices: untitledColIndices,
                 rawData: rawExcelData.data
             };
         }
@@ -754,7 +745,12 @@
             if (tvData.y1ColIndex >= 0) ws2Headers.push('y1误差');
             if (tvData.y2ColIndex >= 0) ws2Headers.push('y2误差');
             if (tvData.zColIndex >= 0) ws2Headers.push('z误差');
-            if (tvData.tempColIndex >= 0) ws2Headers.push('温度');
+            // 添加所有温度列
+            if (tvData.tempColIndices && tvData.tempColIndices.length > 0) {
+                for (const tempCol of tvData.tempColIndices) {
+                    ws2Headers.push(tempCol.header); // 使用原始表头如 "Untitled 1"
+                }
+            }
             if (tvData.voltageColIndex >= 0) ws2Headers.push('电压');
             
             const ws2Data = [ws2Headers];
@@ -800,10 +796,13 @@
                     rowData.push(error);
                 }
                 
-                // 添加温度和电压数据
-                if (tvData.tempColIndex >= 0) {
-                    rowData.push(row[tvData.tempColIndex]);
+                // 添加所有温度列数据
+                if (tvData.tempColIndices && tvData.tempColIndices.length > 0) {
+                    for (const tempCol of tvData.tempColIndices) {
+                        rowData.push(row[tempCol.index]);
+                    }
                 }
+                // 添加电压数据
                 if (tvData.voltageColIndex >= 0) {
                     rowData.push(row[tvData.voltageColIndex]);
                 }
