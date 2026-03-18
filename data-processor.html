@@ -3,9 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>数据合并处理工具 v4</title>
+    <title>数据合并处理工具 v6</title>
     <!-- SheetJS (xlsx) -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -762,7 +764,7 @@
             const baseY2 = tvData.y2ColIndex >= 0 ? parseFloat(firstDataRow[tvData.y2ColIndex]) : 0;
             const baseZ = tvData.zColIndex >= 0 ? parseFloat(firstDataRow[tvData.zColIndex]) : 0;
             
-            for (let i = 1; i < rawData.length; i++) {
+            for (let i = 2; i < rawData.length; i++) {
                 const row = rawData[i];
                 const rowData = [row[tvData.timeColIndex]];
                 
