@@ -331,6 +331,21 @@
             <!-- 第二个框：标定数据 -->
             <div class="upload-box">
                 <h3><span>2</span>标定数据 (Excel)</h3>
+                <div class="format-example" style="margin-bottom: 15px; padding: 10px; background: #f0f4ff; border-radius: 6px; border: 1px solid #667eea;">
+                    <p style="color: #e74c3c; font-weight: bold; margin-bottom: 8px; font-size: 0.85rem;">⚠️ 注意！标定值输入格式如图所示：</p>
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; background: white;">
+                        <tr style="background: #d4edda;">
+                            <td style="border: 1px solid #ccc; padding: 4px 8px; font-weight: bold; color: #155724;">x</td>
+                            <td style="border: 1px solid #ccc; padding: 4px 8px; font-weight: bold; color: #155724;">y</td>
+                            <td style="border: 1px solid #ccc; padding: 4px 8px; font-weight: bold; color: #155724;">z</td>
+                        </tr>
+                        <tr>
+                            <td style="border: 1px solid #ccc; padding: 4px 8px;">0.00436</td>
+                            <td style="border: 1px solid #ccc; padding: 4px 8px;">0.00431</td>
+                            <td style="border: 1px solid #ccc; padding: 4px 8px;">0.00419</td>
+                        </tr>
+                    </table>
+                </div>
                 <div class="drop-zone" id="dropZone2" onclick="document.getElementById('file2').click()">
                     <p>📊 点击或拖拽上传 Excel</p>
                     <p class="file-types">包含 x, y, z 标定值</p>
