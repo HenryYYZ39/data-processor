@@ -243,9 +243,9 @@
                 <h3><span>1</span>文档文字识别</h3>
                 <div class="drop-zone" id="dropZone1" onclick="document.getElementById('file1').click()">
                     <p>📄 点击或拖拽上传文件</p>
-                    <p class="file-types">支持：TXT（PDF/Word/图片功能需联网）</p>
+                    <p class="file-types">支持：TXT、Excel（PDF/Word/图片功能需联网）</p>
                 </div>
-                <input type="file" id="file1" style="display:none" accept=".txt" onchange="handleFileSelect(event, 1)">
+                <input type="file" id="file1" style="display:none" accept=".txt,.xlsx,.xls" onchange="handleFileSelect(event, 1)">
                 <div class="file-list" id="fileList1"></div>
                 <div class="text-preview" id="textPreview1" style="display:none;"></div>
             </div>
@@ -348,12 +348,22 @@
                 </div>
             `;
             
-            // 如果是文本文件，立即预览
-            if (boxNum === 1 && file.name.endsWith('.txt')) {
-                file.text().then(text => {
-                    document.getElementById('textPreview1').style.display = 'block';
-                    document.getElementById('textPreview1').textContent = text.substring(0, 500) + (text.length > 500 ? '...' : '');
-                });
+            // 如果是文本文件或Excel文件，立即预览
+            if (boxNum === 1) {
+                const ext = file.name.split('.').pop().toLowerCase();
+                if (ext === 'txt') {
+                    file.text().then(text => {
+                        const formattedText = formatTime(text);
+                        document.getElementById('textPreview1').style.display = 'block';
+                        document.getElementById('textPreview1').textContent = formattedText.substring(0, 500) + (formattedText.length > 500 ? '...' : '');
+                    });
+                } else if (ext === 'xlsx' || ext === 'xls') {
+                    readExcelForText(file).then(text => {
+                        const formattedText = formatTime(text);
+                        document.getElementById('textPreview1').style.display = 'block';
+                        document.getElementById('textPreview1').textContent = formattedText.substring(0, 500) + (formattedText.length > 500 ? '...' : '');
+                    });
+                }
             }
         }
 
@@ -433,14 +443,159 @@
             }
         }
 
+        // 时间识别和格式化函数
+        function formatTime(text) {
+            // 匹配各种时间格式
+            
+            // 1. 标准数字时间格式 (9:00, 15:35, 9:00:30 等)
+            const standardTimeRegex = /(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm|AM|PM)?/gi;
+            
+            // 2. 中文时间格式 (上午九点, 下午9点, 上午9:00, 晚上9点半等)
+            const chineseTimeRegex = /(上午|下午|早上|晚上|早晨|傍晚|凌晨)?\s*(\d{1,2})\s*[点:：]\s*(\d{1,2}|半)?\s*(分)?\s*(am|pm|AM|PM)?/gi;
+            
+            let result = text;
+            const timeMatches = [];
+            
+            // 先处理中文时间格式
+            let chineseMatch;
+            while ((chineseMatch = chineseTimeRegex.exec(text)) !== null) {
+                const period = chineseMatch[1] || '';
+                let hour = parseInt(chineseMatch[2]);
+                let minute = chineseMatch[3];
+                let ampm = chineseMatch[6] || '';
+                
+                // 处理"半"
+                if (minute === '半') {
+                    minute = '30';
+                } else if (!minute) {
+                    minute = '00';
+                } else {
+                    minute = minute.padStart(2, '0');
+                }
+                
+                // 根据中文时段确定 AM/PM
+                if (!ampm) {
+                    if (period.includes('上午') || period.includes('早上') || period.includes('早晨') || period.includes('凌晨')) {
+                        ampm = 'am';
+                    } else if (period.includes('下午') || period.includes('晚上') || period.includes('傍晚')) {
+                        ampm = 'pm';
+                    }
+                }
+                
+                // 格式化时间
+                const formattedHour = hour.toString().padStart(2, '0');
+                const formattedTime = `${formattedHour}:${minute} ${ampm.toLowerCase() || ''}`.trim();
+                
+                timeMatches.push({
+                    original: chineseMatch[0],
+                    formatted: formattedTime,
+                    index: chineseMatch.index
+                });
+            }
+            
+            // 处理标准数字时间格式
+            let standardMatch;
+            while ((standardMatch = standardTimeRegex.exec(text)) !== null) {
+                // 检查这个位置是否已经被中文匹配覆盖
+                const alreadyMatched = timeMatches.some(m => 
+                    standardMatch.index >= m.index && 
+                    standardMatch.index < m.index + m.original.length
+                );
+                
+                if (!alreadyMatched) {
+                    let hour = parseInt(standardMatch[1]);
+                    const minute = standardMatch[2];
+                    const second = standardMatch[3];
+                    let ampm = standardMatch[4] || '';
+                    
+                    // 如果没有 AM/PM 标记，根据常识推断（可选，这里保持原样）
+                    const formattedHour = hour.toString().padStart(2, '0');
+                    let formattedTime = `${formattedHour}:${minute}`;
+                    if (second) {
+                        formattedTime += `:${second}`;
+                    }
+                    if (ampm) {
+                        formattedTime += ` ${ampm.toLowerCase()}`;
+                    }
+                    
+                    timeMatches.push({
+                        original: standardMatch[0],
+                        formatted: formattedTime,
+                        index: standardMatch.index
+                    });
+                }
+            }
+            
+            // 按位置排序，从后往前替换，避免位置偏移
+            timeMatches.sort((a, b) => b.index - a.index);
+            
+            for (const match of timeMatches) {
+                result = result.substring(0, match.index) + match.formatted + result.substring(match.index + match.original.length);
+            }
+            
+            return result;
+        }
+
         async function processDocument(file) {
             const ext = file.name.split('.').pop().toLowerCase();
             
             if (ext === 'txt') {
-                extractedData.text = await file.text();
+                let text = await file.text();
+                // 处理时间格式
+                extractedData.text = formatTime(text);
+            } else if (ext === 'xlsx' || ext === 'xls') {
+                // 读取 Excel 文件并提取文本内容
+                const excelData = await readExcelForText(file);
+                // 处理时间格式
+                extractedData.text = formatTime(excelData);
             } else {
                 extractedData.text = `[${file.name}] - 该格式需要联网支持`;
             }
+        }
+
+        // 从 Excel 文件中提取文本内容
+        async function readExcelForText(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array' });
+                        
+                        if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
+                            throw new Error('Excel文件中没有工作表');
+                        }
+                        
+                        let allText = [];
+                        
+                        // 遍历所有工作表
+                        workbook.SheetNames.forEach(sheetName => {
+                            const sheet = workbook.Sheets[sheetName];
+                            const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                            
+                            if (jsonData && jsonData.length > 0) {
+                                allText.push(`=== ${sheetName} ===`);
+                                jsonData.forEach(row => {
+                                    if (row && row.length > 0) {
+                                        // 过滤掉空值并连接
+                                        const rowText = row.filter(cell => cell !== undefined && cell !== null && cell !== '').join('\t');
+                                        if (rowText) {
+                                            allText.push(rowText);
+                                        }
+                                    }
+                                });
+                                allText.push(''); // 空行分隔
+                            }
+                        });
+                        
+                        resolve(allText.join('\n'));
+                    } catch (error) {
+                        reject(error);
+                    }
+                };
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
         }
 
         async function processCalibration(file) {
