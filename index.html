@@ -552,74 +552,126 @@
 
         /**
          * 解析工况内容
-         * 格式：先识别日期，日期单独一行；时间写在日期下方，不同时间不同行；具体工况写在时间后面的第二列
-         * 支持的时间格式：09:00 am, 15:35 pm, 09:00, 15:35, 1:00, 9:00 等
+         * 格式：一行一行识别
+         * - 日期（如2026/03/14）单独一行，放在第一列
+         * - 时间+工况放在同一行，时间在第一列，工况在第二列
+         * - 支持的时间格式：9:00, 09:00, 15:35, 上午九点, 下午3点, 8:32am, 12:31pm 等
          */
         function parseWorkConditions(text) {
             const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
             const result = [];
             
-            // 正则表达式匹配日期格式：2024-03-18 或 2024/03/18 或 2024年03月18日 或 2024.03.18 等
-            const datePattern = /(\d{4}[-/年.]\d{1,2}[-/月.]\d{1,2}[日]?)/;
-            // 正则表达式匹配时间格式：支持 1:00, 9:00, 09:00, 15:35, 09:00 am, 15:35 pm 等
-            const timePattern = /(\d{1,2}:\d{2}(?::\d{2})?(?:\s+(?:am|pm|AM|PM))?)/;
+            // 日期正则：2024-03-18, 2024/03/18, 2024年03月18日, 2024.03.18, 2026/3/17 等
+            const datePattern = /^(\d{4}[-/年.]\d{1,2}[-/月.]\d{1,2}[日]?)/;
             
-            let currentDate = null;
+            // 时间正则（匹配行首的时间）：
+            // 1. 阿拉伯数字时间：9:00, 09:00, 15:35, 1:00, 8:32am, 12:31pm, 09:00 am 等
+            // 2. 中文时间：上午九点, 下午3点, 早上八点半, 晚上9点 等
+            const timePattern = /^((?:上午|下午|早上|晚上|早晨|傍晚|凌晨)?\s*[\d一二三四五六七八九十两]+\s*[点:：]\s*(?:\d{1,2}|半|[一二三四五六七八九十])?\s*(?:分)?\s*(?:am|pm|AM|PM)?)|(\d{1,2}:\d{2}(?::\d{2})?(?:\s*(?:am|pm|AM|PM))?)/i;
             
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
                 
-                // 尝试匹配日期
+                // 1. 尝试匹配日期
                 const dateMatch = line.match(datePattern);
                 if (dateMatch) {
                     // 标准化日期格式为：年/月/日
                     let dateStr = dateMatch[1];
                     dateStr = dateStr.replace(/年|月/g, '/').replace(/日/, '').replace(/-/g, '/').replace(/\./g, '/');
-                    currentDate = dateStr;
-                    // 日期单独一行
+                    // 日期单独一行，放在第一列，第二列为空
                     result.push({
                         type: 'date',
-                        date: currentDate,
-                        time: '',
-                        content: ''
+                        col1: dateStr,
+                        col2: ''
                     });
                     continue;
                 }
                 
-                // 尝试匹配时间
+                // 2. 尝试匹配时间
                 const timeMatch = line.match(timePattern);
-                if (timeMatch && currentDate) {
-                    let time = timeMatch[1].trim();
-                    // 标准化时间格式：补零 + 统一 am/pm 格式
-                    const timeParts = time.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm|AM|PM)?/i);
-                    if (timeParts) {
-                        let hour = timeParts[1].padStart(2, '0');
-                        let minute = timeParts[2];
-                        let second = timeParts[3] || '';
-                        let ampm = timeParts[4] || '';
-                        
-                        let formattedTime = `${hour}:${minute}`;
-                        if (second) {
-                            formattedTime += `:${second}`;
-                        }
-                        if (ampm) {
-                            formattedTime += ` ${ampm.toLowerCase()}`;
-                        }
-                        time = formattedTime;
-                    }
+                if (timeMatch) {
+                    // 提取时间字符串（取第一个非undefined的捕获组）
+                    const timeStr = timeMatch[1] || timeMatch[2];
+                    const formattedTime = parseAndFormatTime(timeStr);
                     
-                    // 提取时间后面的内容作为工况
-                    let content = line.substring(line.indexOf(timeMatch[1]) + timeMatch[1].length).trim();
-                    // 移除常见的分隔符
-                    content = content.replace(/^[：:，,\s]+/, '').trim();
+                    // 提取工况内容（时间后面的所有内容）
+                    let content = '';
+                    const timeIndex = line.indexOf(timeStr);
+                    if (timeIndex !== -1) {
+                        content = line.substring(timeIndex + timeStr.length).trim();
+                        // 移除常见的分隔符
+                        content = content.replace(/^[：:，,\s]+/, '').trim();
+                    }
                     
                     result.push({
                         type: 'time',
-                        date: currentDate,
-                        time: time,
-                        content: content
+                        col1: formattedTime,
+                        col2: content
                     });
                 }
+            }
+            
+            return result;
+        }
+        
+        /**
+         * 解析并格式化时间
+         * 支持：9:00, 09:00, 15:35, 上午九点, 下午3点, 8:32am, 12:31pm 等
+         * 输出统一格式：09:00 或 09:00 am/pm
+         */
+        function parseAndFormatTime(timeStr) {
+            if (!timeStr) return '';
+            
+            timeStr = timeStr.trim();
+            
+            // 检查是否有中文时段词（上午、下午等）
+            const periodMatch = timeStr.match(/(上午|下午|早上|晚上|早晨|傍晚|凌晨)/);
+            let period = periodMatch ? periodMatch[1] : '';
+            
+            // 检查是否有am/pm标记
+            const ampmMatch = timeStr.match(/(am|pm|AM|PM)/i);
+            let ampm = ampmMatch ? ampmMatch[1].toLowerCase() : '';
+            
+            // 提取小时和分钟
+            let hour = null;
+            let minute = '00';
+            
+            // 尝试匹配中文时间格式：九点, 九点半, 9点, 9点半 等
+            const chineseTimeMatch = timeStr.match(/([\d一二三四五六七八九十两]+)\s*[点:：]\s*(\d{1,2}|半|[一二三四五六七八九十])?/);
+            if (chineseTimeMatch) {
+                hour = chineseToNumber(chineseTimeMatch[1]);
+                const minStr = chineseTimeMatch[2];
+                if (minStr === '半') {
+                    minute = '30';
+                } else if (minStr) {
+                    const minNum = chineseToNumber(minStr);
+                    minute = minNum !== null ? minNum.toString().padStart(2, '0') : minStr.padStart(2, '0');
+                }
+            } else {
+                // 尝试匹配阿拉伯数字时间格式：9:00, 15:35, 8:32am 等
+                const numTimeMatch = timeStr.match(/(\d{1,2}):(\d{2})(?::\d{2})?/);
+                if (numTimeMatch) {
+                    hour = parseInt(numTimeMatch[1]);
+                    minute = numTimeMatch[2];
+                }
+            }
+            
+            if (hour === null) return timeStr;
+            
+            // 根据时段词确定am/pm
+            if (!ampm && period) {
+                if (period === '上午' || period === '早上' || period === '早晨' || period === '凌晨') {
+                    ampm = 'am';
+                } else if (period === '下午' || period === '晚上' || period === '傍晚') {
+                    ampm = 'pm';
+                }
+            }
+            
+            // 格式化输出
+            const formattedHour = hour.toString().padStart(2, '0');
+            let result = `${formattedHour}:${minute}`;
+            if (ampm) {
+                result += ` ${ampm}`;
             }
             
             return result;
@@ -1032,13 +1084,8 @@
             const parsedConditions = extractedData.parsedWorkConditions;
             if (parsedConditions.length > 0) {
                 for (const item of parsedConditions) {
-                    if (item.type === 'date') {
-                        // 日期单独一行，第二列为空
-                        ws1Data.push([item.date, '']);
-                    } else if (item.type === 'time') {
-                        // 时间在日期下方，工况写在第二列
-                        ws1Data.push([item.time, item.content]);
-                    }
+                    // 统一使用 col1 和 col2
+                    ws1Data.push([item.col1, item.col2]);
                 }
             } else {
                 // 如果没有解析到结构化数据，显示原始文本
