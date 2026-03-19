@@ -553,17 +553,19 @@
         /**
          * 解析工况内容
          * 格式：先识别日期，日期单独一行；时间写在日期下方，不同时间不同行；具体工况写在时间后面的第二列
+         * 支持的时间格式：09:00 am, 15:35 pm, 09:00, 15:35 等
          */
         function parseWorkConditions(text) {
             const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
             const result = [];
             
-            // 正则表达式匹配日期格式：2024-03-18 或 2024/03/18 或 2024年03月18日 等
-            const datePattern = /(\d{4}[-/年]\d{1,2}[-/月]\d{1,2}[日]?)/;
-            // 正则表达式匹配时间格式：08:00 或 8:00 或 08时00分 等
-            const timePattern = /(\d{1,2}[:：]\d{2}(?::\d{2})?)|(\d{1,2}时\d{2}分)/;
+            // 正则表达式匹配日期格式：2024-03-18 或 2024/03/18 或 2024年03月18日 或 2024.03.18 等
+            const datePattern = /(\d{4}[-/年.]\d{1,2}[-/月.]\d{1,2}[日]?)/;
+            // 正则表达式匹配时间格式（支持格式化后的时间）：09:00 am, 15:35 pm, 09:00:00 pm, 09:00, 15:35 等
+            const timePattern = /(\d{2}:\d{2}(?::\d{2})?(?:\s+(?:am|pm|AM|PM))?)/;
             
             let currentDate = null;
+            let lastDateLineIndex = -1;
             
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
@@ -571,7 +573,11 @@
                 // 尝试匹配日期
                 const dateMatch = line.match(datePattern);
                 if (dateMatch) {
-                    currentDate = dateMatch[1];
+                    // 标准化日期格式为：年/月/日
+                    let dateStr = dateMatch[1];
+                    dateStr = dateStr.replace(/年|月/g, '/').replace(/日/, '').replace(/-/g, '/').replace(/\./g, '/');
+                    currentDate = dateStr;
+                    lastDateLineIndex = result.length;
                     // 日期单独一行
                     result.push({
                         type: 'date',
@@ -582,12 +588,12 @@
                     continue;
                 }
                 
-                // 尝试匹配时间
+                // 尝试匹配时间（优先匹配格式化后的时间 HH:MM am/pm）
                 const timeMatch = line.match(timePattern);
                 if (timeMatch && currentDate) {
-                    const time = timeMatch[1] || timeMatch[2];
+                    let time = timeMatch[1].trim();
                     // 提取时间后面的内容作为工况
-                    let content = line.replace(timeMatch[0], '').trim();
+                    let content = line.substring(line.indexOf(timeMatch[1]) + timeMatch[1].length).trim();
                     // 移除常见的分隔符
                     content = content.replace(/^[：:，,\s]+/, '').trim();
                     
@@ -597,22 +603,6 @@
                         time: time,
                         content: content
                     });
-                } else if (currentDate && line.length > 0) {
-                    // 如果没有匹配到时间，但有当前日期，可能是时间没有明确标记
-                    // 尝试查找行首的数字作为时间
-                    const simpleTimeMatch = line.match(/^(\d{1,2}[:：]\d{2})/);
-                    if (simpleTimeMatch) {
-                        const time = simpleTimeMatch[1];
-                        let content = line.substring(simpleTimeMatch[0].length).trim();
-                        content = content.replace(/^[：:，,\s]+/, '').trim();
-                        
-                        result.push({
-                            type: 'time',
-                            date: currentDate,
-                            time: time,
-                            content: content
-                        });
-                    }
                 }
             }
             
