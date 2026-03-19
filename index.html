@@ -3,9 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>数据合并处理工具</title>
+    <title>数据合并处理工具 v8</title>
     <!-- SheetJS (xlsx) -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <!-- 阿里云OSS SDK -->
+    <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -231,6 +235,80 @@
             font-size: 0.9rem;
             color: #333;
         }
+        .oss-config {
+            margin-top: 20px;
+            padding: 20px;
+            background: #f0f4ff;
+            border-radius: 8px;
+            border: 1px solid #667eea;
+        }
+        .oss-config h4 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1rem;
+        }
+        .oss-config .input-group {
+            margin-bottom: 10px;
+        }
+        .oss-config label {
+            display: inline-block;
+            width: 120px;
+            color: #666;
+            font-size: 0.9rem;
+        }
+        .oss-config input {
+            width: calc(100% - 130px);
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+        .oss-config input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        .oss-btn {
+            display: inline-block;
+            padding: 12px 30px;
+            background: #ff6b6b;
+            color: white;
+            text-decoration: none;
+            border-radius: 25px;
+            font-weight: 500;
+            transition: background 0.2s;
+            margin-top: 10px;
+            border: none;
+            cursor: pointer;
+        }
+        .oss-btn:hover {
+            background: #ee5a5a;
+        }
+        .oss-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .oss-status {
+            margin-top: 10px;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            display: none;
+        }
+        .oss-status.success {
+            display: block;
+            background: #d4edda;
+            color: #155724;
+        }
+        .oss-status.error {
+            display: block;
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .oss-status.loading {
+            display: block;
+            background: #fff3cd;
+            color: #856404;
+        }
     </style>
 </head>
 <body>
@@ -286,6 +364,34 @@
         <div class="result" id="result">
             <h3>✅ 处理完成！</h3>
             <a href="#" class="download-btn" id="downloadBtn" onclick="downloadExcel()">📥 下载合并后的 Excel</a>
+            
+            <!-- OSS上传配置 -->
+            <div class="oss-config" id="ossConfig">
+                <h4>☁️ 上传到阿里云OSS（可选）</h4>
+                <div class="input-group">
+                    <label>Bucket名称：</label>
+                    <input type="text" id="ossBucket" placeholder="your-bucket-name">
+                </div>
+                <div class="input-group">
+                    <label>Endpoint：</label>
+                    <input type="text" id="ossEndpoint" placeholder="oss-cn-hangzhou.aliyuncs.com">
+                </div>
+                <div class="input-group">
+                    <label>AccessKey ID：</label>
+                    <input type="text" id="ossAccessKeyId" placeholder="LTAI...">
+                </div>
+                <div class="input-group">
+                    <label>AccessKey Secret：</label>
+                    <input type="password" id="ossAccessKeySecret" placeholder="your-secret-key">
+                </div>
+                <div class="input-group">
+                    <label>存储路径：</label>
+                    <input type="text" id="ossPath" placeholder="data/" value="data/">
+                </div>
+                <button class="oss-btn" id="ossBtn" onclick="uploadToOSS()">📤 直接上传到OSS</button>
+                <div class="oss-status" id="ossStatus"></div>
+            </div>
+            
             <div class="preview" id="preview"></div>
         </div>
     </div>
@@ -300,6 +406,7 @@
 
         const extractedData = {
             text: '',
+            parsedWorkConditions: [], // 存储解析后的工况数据
             calibration: {},
             tempVoltage: null
         };
@@ -443,6 +550,75 @@
             }
         }
 
+        /**
+         * 解析工况内容
+         * 格式：先识别日期，日期单独一行；时间写在日期下方，不同时间不同行；具体工况写在时间后面的第二列
+         */
+        function parseWorkConditions(text) {
+            const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+            const result = [];
+            
+            // 正则表达式匹配日期格式：2024-03-18 或 2024/03/18 或 2024年03月18日 等
+            const datePattern = /(\d{4}[-/年]\d{1,2}[-/月]\d{1,2}[日]?)/;
+            // 正则表达式匹配时间格式：08:00 或 8:00 或 08时00分 等
+            const timePattern = /(\d{1,2}[:：]\d{2}(?::\d{2})?)|(\d{1,2}时\d{2}分)/;
+            
+            let currentDate = null;
+            
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                
+                // 尝试匹配日期
+                const dateMatch = line.match(datePattern);
+                if (dateMatch) {
+                    currentDate = dateMatch[1];
+                    // 日期单独一行
+                    result.push({
+                        type: 'date',
+                        date: currentDate,
+                        time: '',
+                        content: ''
+                    });
+                    continue;
+                }
+                
+                // 尝试匹配时间
+                const timeMatch = line.match(timePattern);
+                if (timeMatch && currentDate) {
+                    const time = timeMatch[1] || timeMatch[2];
+                    // 提取时间后面的内容作为工况
+                    let content = line.replace(timeMatch[0], '').trim();
+                    // 移除常见的分隔符
+                    content = content.replace(/^[：:，,\s]+/, '').trim();
+                    
+                    result.push({
+                        type: 'time',
+                        date: currentDate,
+                        time: time,
+                        content: content
+                    });
+                } else if (currentDate && line.length > 0) {
+                    // 如果没有匹配到时间，但有当前日期，可能是时间没有明确标记
+                    // 尝试查找行首的数字作为时间
+                    const simpleTimeMatch = line.match(/^(\d{1,2}[:：]\d{2})/);
+                    if (simpleTimeMatch) {
+                        const time = simpleTimeMatch[1];
+                        let content = line.substring(simpleTimeMatch[0].length).trim();
+                        content = content.replace(/^[：:，,\s]+/, '').trim();
+                        
+                        result.push({
+                            type: 'time',
+                            date: currentDate,
+                            time: time,
+                            content: content
+                        });
+                    }
+                }
+            }
+            
+            return result;
+        }
+
         // 时间识别和格式化函数
         function formatTime(text) {
             // 匹配各种时间格式
@@ -508,7 +684,6 @@
                     const second = standardMatch[3];
                     let ampm = standardMatch[4] || '';
                     
-                    // 如果没有 AM/PM 标记，根据常识推断（可选，这里保持原样）
                     const formattedHour = hour.toString().padStart(2, '0');
                     let formattedTime = `${formattedHour}:${minute}`;
                     if (second) {
@@ -534,23 +709,6 @@
             }
             
             return result;
-        }
-
-        async function processDocument(file) {
-            const ext = file.name.split('.').pop().toLowerCase();
-            
-            if (ext === 'txt') {
-                let text = await file.text();
-                // 处理时间格式
-                extractedData.text = formatTime(text);
-            } else if (ext === 'xlsx' || ext === 'xls') {
-                // 读取 Excel 文件并提取文本内容
-                const excelData = await readExcelForText(file);
-                // 处理时间格式
-                extractedData.text = formatTime(excelData);
-            } else {
-                extractedData.text = `[${file.name}] - 该格式需要联网支持`;
-            }
         }
 
         // 从 Excel 文件中提取文本内容
@@ -596,6 +754,30 @@
                 reader.onerror = reject;
                 reader.readAsArrayBuffer(file);
             });
+        }
+
+        async function processDocument(file) {
+            const ext = file.name.split('.').pop().toLowerCase();
+            
+            if (ext === 'txt') {
+                let text = await file.text();
+                // 处理时间格式
+                text = formatTime(text);
+                extractedData.text = text;
+                // 解析工况内容
+                extractedData.parsedWorkConditions = parseWorkConditions(extractedData.text);
+            } else if (ext === 'xlsx' || ext === 'xls') {
+                // 读取 Excel 文件并提取文本内容
+                let excelData = await readExcelForText(file);
+                // 处理时间格式
+                excelData = formatTime(excelData);
+                extractedData.text = excelData;
+                // 解析工况内容
+                extractedData.parsedWorkConditions = parseWorkConditions(extractedData.text);
+            } else {
+                extractedData.text = `[${file.name}] - 该格式需要联网支持`;
+                extractedData.parsedWorkConditions = [];
+            }
         }
 
         async function processCalibration(file) {
@@ -650,7 +832,8 @@
             
             let timeColIndex = 0;
             let x1ColIndex = -1, x2ColIndex = -1, y1ColIndex = -1, y2ColIndex = -1, zColIndex = -1;
-            const untitledColIndices = [];
+            let voltageColIndex = -1;
+            const tempColIndices = []; // 存储所有温度列索引
             
             for (let i = 0; i < headers.length; i++) {
                 const colLower = String(headers[i]).toLowerCase().trim();
@@ -664,8 +847,22 @@
                     y2ColIndex = i;
                 } else if (colLower === 'z') {
                     zColIndex = i;
+                } else if (colLower.includes('volt') || colLower.includes('电压')) {
+                    voltageColIndex = i;
                 } else if (colLower.includes('untitled')) {
-                    untitledColIndices.push(i);
+                    // 检查该列是否为温度数据（值范围 5-40）
+                    if (rawExcelData.data.length > 1) {
+                        const sampleValue = parseFloat(rawExcelData.data[1][i]);
+                        if (!isNaN(sampleValue) && sampleValue >= 5 && sampleValue <= 40) {
+                            tempColIndices.push({
+                                index: i,
+                                header: headers[i]
+                            });
+                        } else if (!isNaN(sampleValue) && sampleValue >= 0 && sampleValue <= 1 && voltageColIndex < 0) {
+                            // 电压范围 0-1
+                            voltageColIndex = i;
+                        }
+                    }
                 }
             }
 
@@ -677,7 +874,8 @@
                 y1ColIndex: y1ColIndex,
                 y2ColIndex: y2ColIndex,
                 zColIndex: zColIndex,
-                untitledColIndices: untitledColIndices,
+                tempColIndices: tempColIndices,  // 所有温度列
+                voltageColIndex: voltageColIndex,
                 rawData: rawExcelData.data
             };
         }
@@ -776,10 +974,29 @@
         async function generateExcel() {
             const wb = XLSX.utils.book_new();
 
-            // 第一页：识别的文字
-            const ws1Data = [['识别的文字内容'], [extractedData.text]];
+            // 第一页：工况内容（按新格式）
+            const ws1Data = [['日期/时间', '工况内容']];
+            
+            const parsedConditions = extractedData.parsedWorkConditions;
+            if (parsedConditions.length > 0) {
+                for (const item of parsedConditions) {
+                    if (item.type === 'date') {
+                        // 日期单独一行，第二列为空
+                        ws1Data.push([item.date, '']);
+                    } else if (item.type === 'time') {
+                        // 时间在日期下方，工况写在第二列
+                        ws1Data.push([item.time, item.content]);
+                    }
+                }
+            } else {
+                // 如果没有解析到结构化数据，显示原始文本
+                ws1Data.push([extractedData.text, '']);
+            }
+            
             const ws1 = XLSX.utils.aoa_to_sheet(ws1Data);
-            XLSX.utils.book_append_sheet(wb, ws1, '文字识别');
+            // 设置列宽
+            ws1['!cols'] = [{ wch: 20 }, { wch: 50 }];
+            XLSX.utils.book_append_sheet(wb, ws1, '工况内容');
 
             // 第二页：数据汇总
             const tvData = extractedData.tempVoltage;
@@ -792,7 +1009,13 @@
             if (tvData.y1ColIndex >= 0) ws2Headers.push('y1误差');
             if (tvData.y2ColIndex >= 0) ws2Headers.push('y2误差');
             if (tvData.zColIndex >= 0) ws2Headers.push('z误差');
-            tvData.untitledColIndices.forEach(idx => ws2Headers.push(rawData[0][idx]));
+            // 添加所有温度列
+            if (tvData.tempColIndices && tvData.tempColIndices.length > 0) {
+                for (const tempCol of tvData.tempColIndices) {
+                    ws2Headers.push(tempCol.header); // 使用原始表头如 "Untitled 1"
+                }
+            }
+            if (tvData.voltageColIndex >= 0) ws2Headers.push('电压');
             
             const ws2Data = [ws2Headers];
             
@@ -837,9 +1060,16 @@
                     rowData.push(error);
                 }
                 
-                tvData.untitledColIndices.forEach(idx => {
-                    rowData.push(row[idx]);
-                });
+                // 添加所有温度列数据
+                if (tvData.tempColIndices && tvData.tempColIndices.length > 0) {
+                    for (const tempCol of tvData.tempColIndices) {
+                        rowData.push(row[tempCol.index]);
+                    }
+                }
+                // 添加电压数据
+                if (tvData.voltageColIndex >= 0) {
+                    rowData.push(row[tvData.voltageColIndex]);
+                }
                 
                 ws2Data.push(rowData);
             }
@@ -892,6 +1122,77 @@
             if (window.generatedWorkbook) {
                 const date = new Date().toISOString().split('T')[0];
                 XLSX.writeFile(window.generatedWorkbook, `合并数据_${date}.xlsx`);
+            }
+        }
+
+        // 生成Excel文件的Blob
+        function generateExcelBlob() {
+            if (!window.generatedWorkbook) return null;
+            const wbout = XLSX.write(window.generatedWorkbook, { bookType: 'xlsx', type: 'array' });
+            return new Blob([wbout], { type: 'application/octet-stream' });
+        }
+
+        // 上传到阿里云OSS
+        async function uploadToOSS() {
+            const bucket = document.getElementById('ossBucket').value.trim();
+            const endpoint = document.getElementById('ossEndpoint').value.trim();
+            const accessKeyId = document.getElementById('ossAccessKeyId').value.trim();
+            const accessKeySecret = document.getElementById('ossAccessKeySecret').value.trim();
+            const path = document.getElementById('ossPath').value.trim() || 'data/';
+            const statusDiv = document.getElementById('ossStatus');
+            const btn = document.getElementById('ossBtn');
+
+            // 验证输入
+            if (!bucket || !endpoint || !accessKeyId || !accessKeySecret) {
+                statusDiv.className = 'oss-status error';
+                statusDiv.textContent = '请填写完整的OSS配置信息';
+                return;
+            }
+
+            const blob = generateExcelBlob();
+            if (!blob) {
+                statusDiv.className = 'oss-status error';
+                statusDiv.textContent = '请先生成Excel文件';
+                return;
+            }
+
+            btn.disabled = true;
+            statusDiv.className = 'oss-status loading';
+            statusDiv.textContent = '正在上传...';
+
+            try {
+                // 创建OSS客户端
+                // 从 endpoint 提取 region，例如：oss-cn-shanghai.aliyuncs.com -> oss-cn-shanghai
+                let region = endpoint;
+                if (endpoint.includes('.aliyuncs.com')) {
+                    region = endpoint.replace('.aliyuncs.com', '');
+                }
+                
+                const client = new OSS({
+                    region: region,
+                    accessKeyId: accessKeyId,
+                    accessKeySecret: accessKeySecret,
+                    bucket: bucket,
+                    secure: true  // 使用 HTTPS
+                });
+
+                // 生成文件名
+                const date = new Date();
+                const filename = `合并数据_${date.toISOString().split('T')[0]}_${date.getTime()}.xlsx`;
+                const objectName = path + filename;
+
+                // 上传文件
+                const result = await client.put(objectName, blob);
+
+                statusDiv.className = 'oss-status success';
+                statusDiv.innerHTML = `✅ 上传成功！<br>文件地址：<a href="${result.url}" target="_blank">${result.url}</a>`;
+
+            } catch (error) {
+                console.error('OSS上传失败:', error);
+                statusDiv.className = 'oss-status error';
+                statusDiv.textContent = '上传失败: ' + (error.message || '请检查配置信息');
+            } finally {
+                btn.disabled = false;
             }
         }
     </script>
