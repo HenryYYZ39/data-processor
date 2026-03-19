@@ -556,24 +556,27 @@
          * - 日期（如2026/03/14）单独一行，放在第一列
          * - 时间+工况放在同一行，时间在第一列，工况在第二列
          * - 支持的时间格式：9:00, 09:00, 15:35, 上午九点, 下午3点, 8:32am, 12:31pm 等
+         * - 保留原始空格和换行
          */
         function parseWorkConditions(text) {
-            const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+            // 只按换行分割，不去除空格，不过滤空行
+            const lines = text.split('\n');
             const result = [];
             
             // 日期正则：2024-03-18, 2024/03/18, 2024年03月18日, 2024.03.18, 2026/3/17 等
             const datePattern = /^(\d{4}[-/年.]\d{1,2}[-/月.]\d{1,2}[日]?)/;
             
-            // 时间正则（匹配行首的时间）：
+            // 时间正则（匹配行首的时间，去除前导空格后匹配）：
             // 1. 阿拉伯数字时间：9:00, 09:00, 15:35, 1:00, 8:32am, 12:31pm, 09:00 am 等
             // 2. 中文时间：上午九点, 下午3点, 早上八点半, 晚上9点 等
             const timePattern = /^((?:上午|下午|早上|晚上|早晨|傍晚|凌晨)?\s*[\d一二三四五六七八九十两]+\s*[点:：]\s*(?:\d{1,2}|半|[一二三四五六七八九十])?\s*(?:分)?\s*(?:am|pm|AM|PM)?)|(\d{1,2}:\d{2}(?::\d{2})?(?:\s*(?:am|pm|AM|PM))?)/i;
             
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
+                const trimmedLine = line.trim();
                 
                 // 1. 尝试匹配日期
-                const dateMatch = line.match(datePattern);
+                const dateMatch = trimmedLine.match(datePattern);
                 if (dateMatch) {
                     // 标准化日期格式为：年/月/日
                     let dateStr = dateMatch[1];
@@ -587,20 +590,20 @@
                     continue;
                 }
                 
-                // 2. 尝试匹配时间
-                const timeMatch = line.match(timePattern);
+                // 2. 尝试匹配时间（使用trim后的行来匹配，但保留原始行提取内容）
+                const timeMatch = trimmedLine.match(timePattern);
                 if (timeMatch) {
                     // 提取时间字符串（取第一个非undefined的捕获组）
                     const timeStr = timeMatch[1] || timeMatch[2];
                     const formattedTime = parseAndFormatTime(timeStr);
                     
-                    // 提取工况内容（时间后面的所有内容）
+                    // 提取工况内容（从trim后的行中提取时间后面的所有内容）
                     let content = '';
-                    const timeIndex = line.indexOf(timeStr);
+                    const timeIndex = trimmedLine.indexOf(timeStr);
                     if (timeIndex !== -1) {
-                        content = line.substring(timeIndex + timeStr.length).trim();
-                        // 移除常见的分隔符
-                        content = content.replace(/^[：:，,\s]+/, '').trim();
+                        content = trimmedLine.substring(timeIndex + timeStr.length);
+                        // 只移除开头的分隔符，保留中间和末尾的空格
+                        content = content.replace(/^[：:，,\s]+/, '');
                     }
                     
                     result.push({
