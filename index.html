@@ -321,9 +321,9 @@
                 <h3><span>1</span>文档文字识别</h3>
                 <div class="drop-zone" id="dropZone1" onclick="document.getElementById('file1').click()">
                     <p>📄 点击或拖拽上传文件</p>
-                    <p class="file-types">支持：TXT、Excel（PDF/Word/图片功能需联网）</p>
+                    <p class="file-types">支持：TXT（PDF/Word/图片功能需联网）</p>
                 </div>
-                <input type="file" id="file1" style="display:none" accept=".txt,.xlsx,.xls" onchange="handleFileSelect(event, 1)">
+                <input type="file" id="file1" style="display:none" accept=".txt" onchange="handleFileSelect(event, 1)">
                 <div class="file-list" id="fileList1"></div>
                 <div class="text-preview" id="textPreview1" style="display:none;"></div>
             </div>
@@ -455,22 +455,12 @@
                 </div>
             `;
             
-            // 如果是文本文件或Excel文件，立即预览
-            if (boxNum === 1) {
-                const ext = file.name.split('.').pop().toLowerCase();
-                if (ext === 'txt') {
-                    file.text().then(text => {
-                        const formattedText = formatTime(text);
-                        document.getElementById('textPreview1').style.display = 'block';
-                        document.getElementById('textPreview1').textContent = formattedText.substring(0, 500) + (formattedText.length > 500 ? '...' : '');
-                    });
-                } else if (ext === 'xlsx' || ext === 'xls') {
-                    readExcelForText(file).then(text => {
-                        const formattedText = formatTime(text);
-                        document.getElementById('textPreview1').style.display = 'block';
-                        document.getElementById('textPreview1').textContent = formattedText.substring(0, 500) + (formattedText.length > 500 ? '...' : '');
-                    });
-                }
+            // 如果是文本文件，立即预览
+            if (boxNum === 1 && file.name.endsWith('.txt')) {
+                file.text().then(text => {
+                    document.getElementById('textPreview1').style.display = 'block';
+                    document.getElementById('textPreview1').textContent = text.substring(0, 500) + (text.length > 500 ? '...' : '');
+                });
             }
         }
 
@@ -552,333 +542,78 @@
 
         /**
          * 解析工况内容
-         * 格式：一行一行识别
-         * - 日期（如2026/03/14）单独一行，放在第一列
-         * - 时间+工况放在同一行，时间在第一列，工况在第二列
-         * - 支持的时间格式：9:00, 09:00, 15:35, 上午九点, 下午3点, 8:32am, 12:31pm 等
-         * - 保留原始空格和换行
+         * 格式：先识别日期，日期单独一行；时间写在日期下方，不同时间不同行；具体工况写在时间后面的第二列
          */
         function parseWorkConditions(text) {
-            // 只按换行分割，不去除空格，不过滤空行
-            const lines = text.split('\n');
+            const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
             const result = [];
             
-            // 日期正则：2024-03-18, 2024/03/18, 2024年03月18日, 2024.03.18, 2026/3/17 等
-            const datePattern = /^(\d{4}[-/年.]\d{1,2}[-/月.]\d{1,2}[日]?)/;
+            // 正则表达式匹配日期格式：2024-03-18 或 2024/03/18 或 2024年03月18日 等
+            const datePattern = /(\d{4}[-/年]\d{1,2}[-/月]\d{1,2}[日]?)/;
+            // 正则表达式匹配时间格式：08:00 或 8:00 或 08时00分 等
+            const timePattern = /(\d{1,2}[:：]\d{2}(?::\d{2})?)|(\d{1,2}时\d{2}分)/;
             
-            // 时间正则（匹配行首的时间，去除前导空格后匹配）：
-            // 1. 阿拉伯数字时间：9:00, 09:00, 15:35, 1:00, 8:32am, 12:31pm, 09:00 am 等
-            // 2. 中文时间：上午九点, 下午3点, 早上八点半, 晚上9点 等
-            const timePattern = /^((?:上午|下午|早上|晚上|早晨|傍晚|凌晨)?\s*[\d一二三四五六七八九十两]+\s*[点:：]\s*(?:\d{1,2}|半|[一二三四五六七八九十])?\s*(?:分)?\s*(?:am|pm|AM|PM)?)|(\d{1,2}:\d{2}(?::\d{2})?(?:\s*(?:am|pm|AM|PM))?)/i;
+            let currentDate = null;
             
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
-                const trimmedLine = line.trim();
                 
-                // 1. 尝试匹配日期
-                const dateMatch = trimmedLine.match(datePattern);
+                // 尝试匹配日期
+                const dateMatch = line.match(datePattern);
                 if (dateMatch) {
-                    // 标准化日期格式为：年/月/日
-                    let dateStr = dateMatch[1];
-                    dateStr = dateStr.replace(/年|月/g, '/').replace(/日/, '').replace(/-/g, '/').replace(/\./g, '/');
-                    // 日期单独一行，放在第一列，第二列为空
+                    currentDate = dateMatch[1];
+                    // 日期单独一行
                     result.push({
                         type: 'date',
-                        col1: dateStr,
-                        col2: ''
+                        date: currentDate,
+                        time: '',
+                        content: ''
                     });
                     continue;
                 }
                 
-                // 2. 尝试匹配时间（使用trim后的行来匹配，但保留原始行提取内容）
-                const timeMatch = trimmedLine.match(timePattern);
-                if (timeMatch) {
-                    // 提取时间字符串（取第一个非undefined的捕获组）
-                    const timeStr = timeMatch[1] || timeMatch[2];
-                    const formattedTime = parseAndFormatTime(timeStr);
-                    
-                    // 提取工况内容（从trim后的行中提取时间后面的所有内容）
-                    let content = '';
-                    const timeIndex = trimmedLine.indexOf(timeStr);
-                    if (timeIndex !== -1) {
-                        content = trimmedLine.substring(timeIndex + timeStr.length);
-                        // 只移除开头的分隔符，保留中间和末尾的空格
-                        content = content.replace(/^[：:，,\s]+/, '');
-                    }
+                // 尝试匹配时间
+                const timeMatch = line.match(timePattern);
+                if (timeMatch && currentDate) {
+                    const time = timeMatch[1] || timeMatch[2];
+                    // 提取时间后面的内容作为工况
+                    let content = line.replace(timeMatch[0], '').trim();
+                    // 移除常见的分隔符
+                    content = content.replace(/^[：:，,\s]+/, '').trim();
                     
                     result.push({
                         type: 'time',
-                        col1: formattedTime,
-                        col2: content
+                        date: currentDate,
+                        time: time,
+                        content: content
                     });
-                }
-            }
-            
-            return result;
-        }
-        
-        /**
-         * 解析并格式化时间
-         * 支持：9:00, 09:00, 15:35, 上午九点, 下午3点, 8:32am, 12:31pm 等
-         * 输出统一格式：09:00 或 09:00 am/pm
-         */
-        function parseAndFormatTime(timeStr) {
-            if (!timeStr) return '';
-            
-            timeStr = timeStr.trim();
-            
-            // 检查是否有中文时段词（上午、下午等）
-            const periodMatch = timeStr.match(/(上午|下午|早上|晚上|早晨|傍晚|凌晨)/);
-            let period = periodMatch ? periodMatch[1] : '';
-            
-            // 检查是否有am/pm标记
-            const ampmMatch = timeStr.match(/(am|pm|AM|PM)/i);
-            let ampm = ampmMatch ? ampmMatch[1].toLowerCase() : '';
-            
-            // 提取小时和分钟
-            let hour = null;
-            let minute = '00';
-            
-            // 尝试匹配中文时间格式：九点, 九点半, 9点, 9点半 等
-            const chineseTimeMatch = timeStr.match(/([\d一二三四五六七八九十两]+)\s*[点:：]\s*(\d{1,2}|半|[一二三四五六七八九十])?/);
-            if (chineseTimeMatch) {
-                hour = chineseToNumber(chineseTimeMatch[1]);
-                const minStr = chineseTimeMatch[2];
-                if (minStr === '半') {
-                    minute = '30';
-                } else if (minStr) {
-                    const minNum = chineseToNumber(minStr);
-                    minute = minNum !== null ? minNum.toString().padStart(2, '0') : minStr.padStart(2, '0');
-                }
-            } else {
-                // 尝试匹配阿拉伯数字时间格式：9:00, 15:35, 8:32am 等
-                const numTimeMatch = timeStr.match(/(\d{1,2}):(\d{2})(?::\d{2})?/);
-                if (numTimeMatch) {
-                    hour = parseInt(numTimeMatch[1]);
-                    minute = numTimeMatch[2];
-                }
-            }
-            
-            if (hour === null) return timeStr;
-            
-            // 根据时段词确定am/pm
-            if (!ampm && period) {
-                if (period === '上午' || period === '早上' || period === '早晨' || period === '凌晨') {
-                    ampm = 'am';
-                } else if (period === '下午' || period === '晚上' || period === '傍晚') {
-                    ampm = 'pm';
-                }
-            }
-            
-            // 格式化输出
-            const formattedHour = hour.toString().padStart(2, '0');
-            let result = `${formattedHour}:${minute}`;
-            if (ampm) {
-                result += ` ${ampm}`;
-            }
-            
-            return result;
-        }
-
-        // 中文数字转阿拉伯数字
-        function chineseToNumber(chinese) {
-            const chineseNums = {
-                '零': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
-                '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
-                '两': 2
-            };
-            
-            if (!chinese) return null;
-            
-            // 处理简单的中文数字（如"八"、"九"）
-            if (chinese.length === 1 && chineseNums[chinese] !== undefined) {
-                return chineseNums[chinese];
-            }
-            
-            // 处理"十X"或"X十"格式
-            if (chinese.includes('十')) {
-                let num = 0;
-                if (chinese.startsWith('十')) {
-                    num = 10 + (chineseNums[chinese[1]] || 0);
-                } else if (chinese.endsWith('十')) {
-                    num = chineseNums[chinese[0]] * 10;
-                } else {
-                    const parts = chinese.split('十');
-                    num = (chineseNums[parts[0]] || 0) * 10 + (chineseNums[parts[1]] || 0);
-                }
-                return num;
-            }
-            
-            // 尝试直接解析阿拉伯数字
-            const arabicNum = parseInt(chinese);
-            if (!isNaN(arabicNum)) {
-                return arabicNum;
-            }
-            
-            return null;
-        }
-
-        // 时间识别和格式化函数
-        function formatTime(text) {
-            // 匹配各种时间格式
-            
-            // 1. 标准数字时间格式 (9:00, 15:35, 9:00:30 等)
-            const standardTimeRegex = /(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm|AM|PM)?/gi;
-            
-            // 2. 中文时间格式 (上午九点, 下午9点, 上午9:00, 晚上9点半, 上午八 等)
-            // 支持中文数字和阿拉伯数字混合
-            const chineseTimeRegex = /(上午|下午|早上|晚上|早晨|傍晚|凌晨)?\s*([\d一二三四五六七八九十两]+)\s*[点:：]\s*(\d{1,2}|半|[一二三四五六七八九十])?\s*(分)?\s*(am|pm|AM|PM)?/gi;
-            
-            let result = text;
-            const timeMatches = [];
-            
-            // 先处理中文时间格式
-            let chineseMatch;
-            while ((chineseMatch = chineseTimeRegex.exec(text)) !== null) {
-                const period = chineseMatch[1] || '';
-                let hour = chineseToNumber(chineseMatch[2]);
-                let minute = chineseMatch[3];
-                let ampm = chineseMatch[6] || '';
-                
-                if (hour === null) continue;
-                
-                // 处理分钟（支持中文数字）
-                if (minute === '半') {
-                    minute = '30';
-                } else if (!minute) {
-                    minute = '00';
-                } else {
-                    const minuteNum = chineseToNumber(minute);
-                    if (minuteNum !== null) {
-                        minute = minuteNum.toString().padStart(2, '0');
-                    } else {
-                        minute = minute.padStart(2, '0');
-                    }
-                }
-                
-                // 根据中文时段确定 AM/PM
-                if (!ampm) {
-                    if (period.includes('上午') || period.includes('早上') || period.includes('早晨') || period.includes('凌晨')) {
-                        ampm = 'am';
-                    } else if (period.includes('下午') || period.includes('晚上') || period.includes('傍晚')) {
-                        ampm = 'pm';
-                    }
-                }
-                
-                // 格式化时间
-                const formattedHour = hour.toString().padStart(2, '0');
-                const formattedTime = `${formattedHour}:${minute} ${ampm.toLowerCase() || ''}`.trim();
-                
-                timeMatches.push({
-                    original: chineseMatch[0],
-                    formatted: formattedTime,
-                    index: chineseMatch.index
-                });
-            }
-            
-            // 处理标准数字时间格式
-            let standardMatch;
-            while ((standardMatch = standardTimeRegex.exec(text)) !== null) {
-                // 检查这个位置是否已经被中文匹配覆盖
-                const alreadyMatched = timeMatches.some(m => 
-                    standardMatch.index >= m.index && 
-                    standardMatch.index < m.index + m.original.length
-                );
-                
-                if (!alreadyMatched) {
-                    let hour = parseInt(standardMatch[1]);
-                    const minute = standardMatch[2];
-                    const second = standardMatch[3];
-                    let ampm = standardMatch[4] || '';
-                    
-                    const formattedHour = hour.toString().padStart(2, '0');
-                    let formattedTime = `${formattedHour}:${minute}`;
-                    if (second) {
-                        formattedTime += `:${second}`;
-                    }
-                    if (ampm) {
-                        formattedTime += ` ${ampm.toLowerCase()}`;
-                    }
-                    
-                    timeMatches.push({
-                        original: standardMatch[0],
-                        formatted: formattedTime,
-                        index: standardMatch.index
-                    });
-                }
-            }
-            
-            // 按位置排序，从后往前替换，避免位置偏移
-            timeMatches.sort((a, b) => b.index - a.index);
-            
-            for (const match of timeMatches) {
-                result = result.substring(0, match.index) + match.formatted + result.substring(match.index + match.original.length);
-            }
-            
-            return result;
-        }
-
-        // 从 Excel 文件中提取文本内容
-        async function readExcelForText(file) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    try {
-                        const data = new Uint8Array(e.target.result);
-                        const workbook = XLSX.read(data, { type: 'array' });
+                } else if (currentDate && line.length > 0) {
+                    // 如果没有匹配到时间，但有当前日期，可能是时间没有明确标记
+                    // 尝试查找行首的数字作为时间
+                    const simpleTimeMatch = line.match(/^(\d{1,2}[:：]\d{2})/);
+                    if (simpleTimeMatch) {
+                        const time = simpleTimeMatch[1];
+                        let content = line.substring(simpleTimeMatch[0].length).trim();
+                        content = content.replace(/^[：:，,\s]+/, '').trim();
                         
-                        if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
-                            throw new Error('Excel文件中没有工作表');
-                        }
-                        
-                        let allText = [];
-                        
-                        // 遍历所有工作表
-                        workbook.SheetNames.forEach(sheetName => {
-                            const sheet = workbook.Sheets[sheetName];
-                            const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-                            
-                            if (jsonData && jsonData.length > 0) {
-                                allText.push(`=== ${sheetName} ===`);
-                                jsonData.forEach(row => {
-                                    if (row && row.length > 0) {
-                                        // 过滤掉空值并连接
-                                        const rowText = row.filter(cell => cell !== undefined && cell !== null && cell !== '').join('\t');
-                                        if (rowText) {
-                                            allText.push(rowText);
-                                        }
-                                    }
-                                });
-                                allText.push(''); // 空行分隔
-                            }
+                        result.push({
+                            type: 'time',
+                            date: currentDate,
+                            time: time,
+                            content: content
                         });
-                        
-                        resolve(allText.join('\n'));
-                    } catch (error) {
-                        reject(error);
                     }
-                };
-                reader.onerror = reject;
-                reader.readAsArrayBuffer(file);
-            });
+                }
+            }
+            
+            return result;
         }
 
         async function processDocument(file) {
             const ext = file.name.split('.').pop().toLowerCase();
             
             if (ext === 'txt') {
-                let text = await file.text();
-                // 处理时间格式
-                text = formatTime(text);
-                extractedData.text = text;
-                // 解析工况内容
-                extractedData.parsedWorkConditions = parseWorkConditions(extractedData.text);
-            } else if (ext === 'xlsx' || ext === 'xls') {
-                // 读取 Excel 文件并提取文本内容
-                let excelData = await readExcelForText(file);
-                // 处理时间格式
-                excelData = formatTime(excelData);
-                extractedData.text = excelData;
+                extractedData.text = await file.text();
                 // 解析工况内容
                 extractedData.parsedWorkConditions = parseWorkConditions(extractedData.text);
             } else {
@@ -1087,8 +822,13 @@
             const parsedConditions = extractedData.parsedWorkConditions;
             if (parsedConditions.length > 0) {
                 for (const item of parsedConditions) {
-                    // 统一使用 col1 和 col2
-                    ws1Data.push([item.col1, item.col2]);
+                    if (item.type === 'date') {
+                        // 日期单独一行，第二列为空
+                        ws1Data.push([item.date, '']);
+                    } else if (item.type === 'time') {
+                        // 时间在日期下方，工况写在第二列
+                        ws1Data.push([item.time, item.content]);
+                    }
                 }
             } else {
                 // 如果没有解析到结构化数据，显示原始文本
@@ -1098,23 +838,6 @@
             const ws1 = XLSX.utils.aoa_to_sheet(ws1Data);
             // 设置列宽
             ws1['!cols'] = [{ wch: 20 }, { wch: 50 }];
-            
-            // 强制将第一列（日期/时间列）设置为文本格式，防止Excel自动转换日期
-            const range = XLSX.utils.decode_range(ws1['!ref']);
-            for (let row = range.s.r + 1; row <= range.e.r; row++) {
-                const cellAddress = XLSX.utils.encode_cell({ r: row, c: 0 });
-                if (ws1[cellAddress]) {
-                    // 强制设置为文本格式，防止Excel自动转换日期
-                    ws1[cellAddress].t = 's'; // 设置单元格类型为字符串
-                    ws1[cellAddress].z = '@'; // 设置数字格式为文本
-                }
-                // 第二列也设置为文本格式
-                const cellAddress2 = XLSX.utils.encode_cell({ r: row, c: 1 });
-                if (ws1[cellAddress2]) {
-                    ws1[cellAddress2].t = 's';
-                }
-            }
-            
             XLSX.utils.book_append_sheet(wb, ws1, '工况内容');
 
             // 第二页：数据汇总
