@@ -1095,6 +1095,23 @@
             const ws1 = XLSX.utils.aoa_to_sheet(ws1Data);
             // 设置列宽
             ws1['!cols'] = [{ wch: 20 }, { wch: 50 }];
+            
+            // 强制将第一列（日期/时间列）设置为文本格式，防止Excel自动转换日期
+            const range = XLSX.utils.decode_range(ws1['!ref']);
+            for (let row = range.s.r + 1; row <= range.e.r; row++) {
+                const cellAddress = XLSX.utils.encode_cell({ r: row, c: 0 });
+                if (ws1[cellAddress]) {
+                    // 强制设置为文本格式，防止Excel自动转换日期
+                    ws1[cellAddress].t = 's'; // 设置单元格类型为字符串
+                    ws1[cellAddress].z = '@'; // 设置数字格式为文本
+                }
+                // 第二列也设置为文本格式
+                const cellAddress2 = XLSX.utils.encode_cell({ r: row, c: 1 });
+                if (ws1[cellAddress2]) {
+                    ws1[cellAddress2].t = 's';
+                }
+            }
+            
             XLSX.utils.book_append_sheet(wb, ws1, '工况内容');
 
             // 第二页：数据汇总
