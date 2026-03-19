@@ -553,7 +553,7 @@
         /**
          * 解析工况内容
          * 格式：先识别日期，日期单独一行；时间写在日期下方，不同时间不同行；具体工况写在时间后面的第二列
-         * 支持的时间格式：09:00 am, 15:35 pm, 09:00, 15:35 等
+         * 支持的时间格式：09:00 am, 15:35 pm, 09:00, 15:35, 1:00, 9:00 等
          */
         function parseWorkConditions(text) {
             const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
@@ -561,11 +561,10 @@
             
             // 正则表达式匹配日期格式：2024-03-18 或 2024/03/18 或 2024年03月18日 或 2024.03.18 等
             const datePattern = /(\d{4}[-/年.]\d{1,2}[-/月.]\d{1,2}[日]?)/;
-            // 正则表达式匹配时间格式（支持格式化后的时间）：09:00 am, 15:35 pm, 09:00:00 pm, 09:00, 15:35 等
-            const timePattern = /(\d{2}:\d{2}(?::\d{2})?(?:\s+(?:am|pm|AM|PM))?)/;
+            // 正则表达式匹配时间格式：支持 1:00, 9:00, 09:00, 15:35, 09:00 am, 15:35 pm 等
+            const timePattern = /(\d{1,2}:\d{2}(?::\d{2})?(?:\s+(?:am|pm|AM|PM))?)/;
             
             let currentDate = null;
-            let lastDateLineIndex = -1;
             
             for (let i = 0; i < lines.length; i++) {
                 const line = lines[i];
@@ -577,7 +576,6 @@
                     let dateStr = dateMatch[1];
                     dateStr = dateStr.replace(/年|月/g, '/').replace(/日/, '').replace(/-/g, '/').replace(/\./g, '/');
                     currentDate = dateStr;
-                    lastDateLineIndex = result.length;
                     // 日期单独一行
                     result.push({
                         type: 'date',
@@ -588,10 +586,28 @@
                     continue;
                 }
                 
-                // 尝试匹配时间（优先匹配格式化后的时间 HH:MM am/pm）
+                // 尝试匹配时间
                 const timeMatch = line.match(timePattern);
                 if (timeMatch && currentDate) {
                     let time = timeMatch[1].trim();
+                    // 标准化时间格式：补零 + 统一 am/pm 格式
+                    const timeParts = time.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm|AM|PM)?/i);
+                    if (timeParts) {
+                        let hour = timeParts[1].padStart(2, '0');
+                        let minute = timeParts[2];
+                        let second = timeParts[3] || '';
+                        let ampm = timeParts[4] || '';
+                        
+                        let formattedTime = `${hour}:${minute}`;
+                        if (second) {
+                            formattedTime += `:${second}`;
+                        }
+                        if (ampm) {
+                            formattedTime += ` ${ampm.toLowerCase()}`;
+                        }
+                        time = formattedTime;
+                    }
+                    
                     // 提取时间后面的内容作为工况
                     let content = line.substring(line.indexOf(timeMatch[1]) + timeMatch[1].length).trim();
                     // 移除常见的分隔符
@@ -609,6 +625,44 @@
             return result;
         }
 
+        // 中文数字转阿拉伯数字
+        function chineseToNumber(chinese) {
+            const chineseNums = {
+                '零': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
+                '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
+                '两': 2
+            };
+            
+            if (!chinese) return null;
+            
+            // 处理简单的中文数字（如"八"、"九"）
+            if (chinese.length === 1 && chineseNums[chinese] !== undefined) {
+                return chineseNums[chinese];
+            }
+            
+            // 处理"十X"或"X十"格式
+            if (chinese.includes('十')) {
+                let num = 0;
+                if (chinese.startsWith('十')) {
+                    num = 10 + (chineseNums[chinese[1]] || 0);
+                } else if (chinese.endsWith('十')) {
+                    num = chineseNums[chinese[0]] * 10;
+                } else {
+                    const parts = chinese.split('十');
+                    num = (chineseNums[parts[0]] || 0) * 10 + (chineseNums[parts[1]] || 0);
+                }
+                return num;
+            }
+            
+            // 尝试直接解析阿拉伯数字
+            const arabicNum = parseInt(chinese);
+            if (!isNaN(arabicNum)) {
+                return arabicNum;
+            }
+            
+            return null;
+        }
+
         // 时间识别和格式化函数
         function formatTime(text) {
             // 匹配各种时间格式
@@ -616,8 +670,9 @@
             // 1. 标准数字时间格式 (9:00, 15:35, 9:00:30 等)
             const standardTimeRegex = /(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm|AM|PM)?/gi;
             
-            // 2. 中文时间格式 (上午九点, 下午9点, 上午9:00, 晚上9点半等)
-            const chineseTimeRegex = /(上午|下午|早上|晚上|早晨|傍晚|凌晨)?\s*(\d{1,2})\s*[点:：]\s*(\d{1,2}|半)?\s*(分)?\s*(am|pm|AM|PM)?/gi;
+            // 2. 中文时间格式 (上午九点, 下午9点, 上午9:00, 晚上9点半, 上午八 等)
+            // 支持中文数字和阿拉伯数字混合
+            const chineseTimeRegex = /(上午|下午|早上|晚上|早晨|傍晚|凌晨)?\s*([\d一二三四五六七八九十两]+)\s*[点:：]\s*(\d{1,2}|半|[一二三四五六七八九十])?\s*(分)?\s*(am|pm|AM|PM)?/gi;
             
             let result = text;
             const timeMatches = [];
@@ -626,17 +681,24 @@
             let chineseMatch;
             while ((chineseMatch = chineseTimeRegex.exec(text)) !== null) {
                 const period = chineseMatch[1] || '';
-                let hour = parseInt(chineseMatch[2]);
+                let hour = chineseToNumber(chineseMatch[2]);
                 let minute = chineseMatch[3];
                 let ampm = chineseMatch[6] || '';
                 
-                // 处理"半"
+                if (hour === null) continue;
+                
+                // 处理分钟（支持中文数字）
                 if (minute === '半') {
                     minute = '30';
                 } else if (!minute) {
                     minute = '00';
                 } else {
-                    minute = minute.padStart(2, '0');
+                    const minuteNum = chineseToNumber(minute);
+                    if (minuteNum !== null) {
+                        minute = minuteNum.toString().padStart(2, '0');
+                    } else {
+                        minute = minute.padStart(2, '0');
+                    }
                 }
                 
                 // 根据中文时段确定 AM/PM
