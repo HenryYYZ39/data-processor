@@ -532,7 +532,8 @@
             hour = hour ? hour : 12; // 0点显示为12
             const hourStr = String(hour).padStart(2, '0');
             
-            return `${year}/${month}/${day} ${hourStr}:${minute}:${second}.000 ${ampm}`;
+            // 格式: yyyy/mm/dd hh:mm:ss AM/PM
+            return `${year}/${month}/${day} ${hourStr}:${minute}:${second} ${ampm}`;
         }
         
         // 从Excel时间字符串中提取可比较的时间键
@@ -546,17 +547,31 @@
             
             const timeStr = String(timeValue).trim();
             
-            // 匹配格式: 2025/11/13 11:53:51.000 AM 或 2025/11/13 11:53:51 AM
-            const match = timeStr.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})(?:\.\d+)?\s*(AM|PM)/i);
+            // 匹配格式: 2025/11/13 11:53:51.000 AM 或 2025/11/13 11:53:51 AM 或 2025/11/13 14:30:00
+            const match = timeStr.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})(?:\.\d+)?\s*(AM|PM)?/i);
             if (match) {
-                const year = match[1];
-                const month = String(match[2]).padStart(2, '0');
-                const day = String(match[3]).padStart(2, '0');
-                const hour = String(match[4]).padStart(2, '0');
-                const minute = match[5];
-                const second = match[6];
-                const ampm = match[7].toUpperCase();
-                return `${year}/${month}/${day} ${hour}:${minute}:${second}.000 ${ampm}`;
+                let year = match[1];
+                let month = String(match[2]).padStart(2, '0');
+                let day = String(match[3]).padStart(2, '0');
+                let hour = parseInt(match[4]);
+                let minute = match[5];
+                let second = match[6];
+                let ampm = match[7];
+                
+                // 如果有AM/PM标记，转换为12小时制
+                if (ampm) {
+                    ampm = ampm.toUpperCase();
+                    // 已经是12小时制，保持原样
+                } else {
+                    // 24小时制，需要转换
+                    ampm = hour >= 12 ? 'PM' : 'AM';
+                    hour = hour % 12;
+                    hour = hour ? hour : 12;
+                }
+                const hourStr = String(hour).padStart(2, '0');
+                
+                // 格式: yyyy/mm/dd hh:mm:ss AM/PM
+                return `${year}/${month}/${day} ${hourStr}:${minute}:${second} ${ampm}`;
             }
             
             // 尝试解析为Date
