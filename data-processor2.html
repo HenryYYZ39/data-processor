@@ -39,8 +39,10 @@
         .result { display: none; background: white; border-radius: 12px; padding: 25px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
         .result.show { display: block; }
         .result h3 { color: #333; margin-bottom: 15px; }
-        .download-btn { display: inline-block; padding: 12px 30px; background: #27ae60; color: white; text-decoration: none; border-radius: 25px; font-weight: 500; transition: background 0.2s; }
+        .download-btn { display: inline-block; padding: 12px 30px; background: #27ae60; color: white; text-decoration: none; border-radius: 25px; font-weight: 500; transition: background 0.2s; margin-right: 10px; margin-bottom: 10px; }
         .download-btn:hover { background: #219a52; }
+        .download-btn.machine-btn { background: #3498db; }
+        .download-btn.machine-btn:hover { background: #2980b9; }
         .preview { margin-top: 20px; max-height: 400px; overflow: auto; }
         .preview table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
         .preview th, .preview td { border: 1px solid #ddd; padding: 8px; text-align: left; }
@@ -130,6 +132,7 @@
         <div class="result" id="result">
             <h3>✅ 处理完成！</h3>
             <a href="#" class="download-btn" id="downloadBtn" onclick="downloadExcel()">📥 下载合并后的 Excel</a>
+            <a href="#" class="download-btn machine-btn" id="downloadMachineBtn" onclick="downloadMachineData()" style="display:none;">⚙️ 下载机床工况处理数据</a>
             <div class="oss-config" id="ossConfig">
                 <h4>☁️ 上传到阿里云OSS（可选）</h4>
                 <div class="input-group"><label>Bucket名称：</label><input type="text" id="ossBucket" placeholder="your-bucket-name"></div>
@@ -263,6 +266,14 @@
                     progress.classList.remove('show');
                     document.getElementById('result').classList.add('show');
                     processBtn.disabled = false;
+                    
+                    // 如果有机床数据，显示下载按钮
+                    const machineBtn = document.getElementById('downloadMachineBtn');
+                    if (extractedData.machineData && extractedData.machineData.resampled.length > 0) {
+                        machineBtn.style.display = 'inline-block';
+                    } else {
+                        machineBtn.style.display = 'none';
+                    }
                 }, 500);
             } catch (error) {
                 alert('处理出错: ' + error.message);
@@ -736,6 +747,38 @@
                 const date = new Date().toISOString().split('T')[0];
                 XLSX.writeFile(window.generatedWorkbook, `合并数据_${date}.xlsx`);
             }
+        }
+
+        // 下载处理后的机床工况数据
+        function downloadMachineData() {
+            if (!extractedData.machineData || !extractedData.machineData.resampled.length) {
+                alert('没有机床数据可下载');
+                return;
+            }
+            
+            const wb = XLSX.utils.book_new();
+            
+            // 构建表头
+            const headers = ['时间', '数据1', '数据2', '数据3', '数据4', '数据5', '数据6'];
+            const wsData = [headers];
+            
+            // 添加数据行
+            for (const row of extractedData.machineData.resampled) {
+                const timeStr = formatDateTimeForComparison(row[7]);
+                const dataRow = [timeStr];
+                // 添加6列均值数据
+                for (let i = 1; i <= 6; i++) {
+                    dataRow.push(row[i]);
+                }
+                wsData.push(dataRow);
+            }
+            
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            ws['!cols'] = [{ wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+            XLSX.utils.book_append_sheet(wb, ws, '机床工况数据');
+            
+            const date = new Date().toISOString().split('T')[0];
+            XLSX.writeFile(wb, `机床工况处理数据_${date}.xlsx`);
         }
 
         function generateExcelBlob() {
