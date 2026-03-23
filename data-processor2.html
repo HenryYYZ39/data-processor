@@ -474,9 +474,10 @@
                     means.push(count > 0 ? sum / count : 0);
                 }
                 
-                // 计算实际时间
+                // 计算实际时间并格式化为字符串
                 const actualTime = new Date(startDate.getTime() + second * 1000);
-                means.push(actualTime); // 第8列是实际时间
+                const timeStr = formatDateTimeForComparison(actualTime);
+                means.push(timeStr); // 第8列是格式化后的时间字符串
                 
                 resampledData.push(means);
             }
@@ -653,7 +654,8 @@
             if (hasMachineData) {
                 machineDataMap = new Map();
                 for (const machineRow of extractedData.machineData.resampled) {
-                    const timeKey = formatDateTimeForComparison(machineRow[7]);
+                    // machineRow[7] 已经是格式化后的时间字符串
+                    const timeKey = machineRow[7];
                     machineDataMap.set(timeKey, machineRow.slice(1, 7)); // 获取6列数据
                 }
             }
@@ -789,8 +791,8 @@
             
             // 添加数据行
             for (const row of extractedData.machineData.resampled) {
-                const timeStr = formatDateTimeForComparison(row[7]);
-                const dataRow = [timeStr];
+                // row[7] 已经是格式化后的时间字符串
+                const dataRow = [row[7]];
                 // 添加6列均值数据
                 for (let i = 1; i <= 6; i++) {
                     dataRow.push(row[i]);
