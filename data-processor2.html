@@ -507,10 +507,50 @@
             const year = date.getFullYear();
             const month = String(date.getMonth() + 1).padStart(2, '0');
             const day = String(date.getDate()).padStart(2, '0');
-            const hour = String(date.getHours()).padStart(2, '0');
+            let hour = date.getHours();
             const minute = String(date.getMinutes()).padStart(2, '0');
             const second = String(date.getSeconds()).padStart(2, '0');
-            return `${year}/${month}/${day} ${hour}:${minute}:${second}`;
+            
+            // 转换为12小时制并添加AM/PM
+            const ampm = hour >= 12 ? 'PM' : 'AM';
+            hour = hour % 12;
+            hour = hour ? hour : 12; // 0点显示为12
+            const hourStr = String(hour).padStart(2, '0');
+            
+            return `${year}/${month}/${day} ${hourStr}:${minute}:${second}.000 ${ampm}`;
+        }
+        
+        // 从Excel时间字符串中提取可比较的时间键
+        function extractTimeKeyFromExcel(timeValue) {
+            if (!timeValue) return null;
+            
+            // 如果是Date对象，格式化为标准格式
+            if (timeValue instanceof Date) {
+                return formatDateTimeForComparison(timeValue);
+            }
+            
+            const timeStr = String(timeValue).trim();
+            
+            // 匹配格式: 2025/11/13 11:53:51.000 AM 或 2025/11/13 11:53:51 AM
+            const match = timeStr.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})(?:\.\d+)?\s*(AM|PM)/i);
+            if (match) {
+                const year = match[1];
+                const month = String(match[2]).padStart(2, '0');
+                const day = String(match[3]).padStart(2, '0');
+                const hour = String(match[4]).padStart(2, '0');
+                const minute = match[5];
+                const second = match[6];
+                const ampm = match[7].toUpperCase();
+                return `${year}/${month}/${day} ${hour}:${minute}:${second}.000 ${ampm}`;
+            }
+            
+            // 尝试解析为Date
+            const parsedDate = new Date(timeStr);
+            if (!isNaN(parsedDate)) {
+                return formatDateTimeForComparison(parsedDate);
+            }
+            
+            return timeStr;
         }
 
         // ==================== Excel生成和下载 ====================
@@ -591,27 +631,23 @@
                 
                 // 如果有机床数据，尝试匹配并插入
                 if (hasMachineData && machineDataMap) {
-                    let timeKey;
-                    if (timeValue instanceof Date) {
-                        timeKey = formatDateTimeForComparison(timeValue);
-                    } else {
-                        // 尝试解析时间字符串
-                        const parsedTime = new Date(timeValue);
-                        if (!isNaN(parsedTime)) {
-                            timeKey = formatDateTimeForComparison(parsedTime);
-                        } else {
-                            timeKey = String(timeValue);
-                        }
-                    }
+                    const timeKey = extractTimeKeyFromExcel(timeValue);
                     
-                    const machineValues = machineDataMap.get(timeKey);
-                    if (machineValues) {
-                        // 匹配成功，插入机床数据
-                        for (let j = 0; j < 6; j++) {
-                            rowData.push(machineValues[j]);
+                    if (timeKey) {
+                        const machineValues = machineDataMap.get(timeKey);
+                        if (machineValues) {
+                            // 匹配成功，插入机床数据
+                            for (let j = 0; j < 6; j++) {
+                                rowData.push(machineValues[j]);
+                            }
+                        } else {
+                            // 无匹配，插入空值
+                            for (let j = 0; j < 6; j++) {
+                                rowData.push('');
+                            }
                         }
                     } else {
-                        // 无匹配，插入空值
+                        // 无法解析时间，插入空值
                         for (let j = 0; j < 6; j++) {
                             rowData.push('');
                         }
