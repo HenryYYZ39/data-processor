@@ -438,6 +438,9 @@
             const rawData = await readExcelRaw(file);
             if (!rawData || rawData.data.length < 2) throw new Error('机床数据文件为空或数据不足');
             
+            // 保存原始表头（第2-7列，即索引1-6）
+            const originalHeaders = rawData.data[0].slice(1, 7);
+            
             // 解析开始时间
             const startDate = parseStartTime(startTimeStr);
             if (!startDate) throw new Error('开始时间格式错误，请使用 YYYY/MM/DD HH:MM:SS');
@@ -480,7 +483,8 @@
             
             extractedData.machineData = {
                 resampled: resampledData, // [秒数, 列2均值, 列3均值, 列4均值, 列5均值, 列6均值, 列7均值, 实际时间]
-                startDate: startDate
+                startDate: startDate,
+                headers: originalHeaders // 原始表头（第2-7列）
             };
         }
 
@@ -596,8 +600,13 @@
             // 构建表头
             const ws2Headers = ['时间'];
             
-            // 如果有机床数据，先插入机床的6列
-            if (hasMachineData) {
+            // 如果有机床数据，先插入机床的6列（使用原始表头）
+            if (hasMachineData && extractedData.machineData.headers) {
+                for (const header of extractedData.machineData.headers) {
+                    ws2Headers.push(header);
+                }
+            } else if (hasMachineData) {
+                // 兼容旧数据，使用默认表头
                 ws2Headers.push('机床数据1', '机床数据2', '机床数据3', '机床数据4', '机床数据5', '机床数据6');
             }
             
@@ -758,8 +767,9 @@
             
             const wb = XLSX.utils.book_new();
             
-            // 构建表头
-            const headers = ['时间', '数据1', '数据2', '数据3', '数据4', '数据5', '数据6'];
+            // 构建表头（使用原始表头）
+            const originalHeaders = extractedData.machineData.headers || ['数据1', '数据2', '数据3', '数据4', '数据5', '数据6'];
+            const headers = ['时间', ...originalHeaders];
             const wsData = [headers];
             
             // 添加数据行
