@@ -533,8 +533,8 @@
             hour = hour ? hour : 12; // 0点显示为12
             const hourStr = String(hour).padStart(2, '0');
             
-            // 格式: yyyy/mm/dd hh:mm:ss AM/PM
-            return `${year}/${month}/${day} ${hourStr}:${minute}:${second} ${ampm}`;
+            // 格式: yyyy/mm/dd hh:mm:ss.000 AM/PM（带毫秒）
+            return `${year}/${month}/${day} ${hourStr}:${minute}:${second}.000 ${ampm}`;
         }
         
         // 从Excel时间字符串中提取可比较的时间键
@@ -571,8 +571,8 @@
                 }
                 const hourStr = String(hour).padStart(2, '0');
                 
-                // 格式: yyyy/mm/dd hh:mm:ss AM/PM
-                return `${year}/${month}/${day} ${hourStr}:${minute}:${second} ${ampm}`;
+                // 格式: yyyy/mm/dd hh:mm:ss.000 AM/PM（带毫秒）
+                return `${year}/${month}/${day} ${hourStr}:${minute}:${second}.000 ${ampm}`;
             }
             
             // 尝试解析为Date
