@@ -548,7 +548,7 @@
             return `${year}/${month}/${day} ${hourStr}:${minute}:${second}.000 ${ampm}`;
         }
         
-        // 从Excel时间字符串中提取可比较的时间键
+        // 从Excel时间字符串中提取可比较的时间键（忽略毫秒，只比较到秒）
         function extractTimeKeyFromExcel(timeValue) {
             if (!timeValue) return null;
             
@@ -582,7 +582,7 @@
                 }
                 const hourStr = String(hour).padStart(2, '0');
                 
-                // 格式: yyyy/mm/dd hh:mm:ss.000 AM/PM（毫秒固定为.000）
+                // 格式: yyyy/mm/dd hh:mm:ss.000 AM/PM（忽略毫秒，统一为.000）
                 return `${year}/${month}/${day} ${hourStr}:${minute}:${second}.000 ${ampm}`;
             }
             
