@@ -540,6 +540,40 @@
             return `${year}/${month}/${day} ${hourStr}:${minute}:${second}.000 ${ampm}`;
         }
         
+        // 格式化时间用于显示（年月日 时间）
+        function formatTimeForDisplay(timeValue) {
+            if (!timeValue) return '';
+            
+            // 如果是Date对象
+            if (timeValue instanceof Date) {
+                const year = timeValue.getFullYear();
+                const month = String(timeValue.getMonth() + 1).padStart(2, '0');
+                const day = String(timeValue.getDate()).padStart(2, '0');
+                const hour = String(timeValue.getHours()).padStart(2, '0');
+                const minute = String(timeValue.getMinutes()).padStart(2, '0');
+                const second = String(timeValue.getSeconds()).padStart(2, '0');
+                return `${year}年${month}月${day}日 ${hour}:${minute}:${second}`;
+            }
+            
+            // 如果是字符串，解析后格式化
+            const timeStr = String(timeValue).trim();
+            
+            // 匹配各种格式: 2025/11/13 11:53:51.000 AM 或 2025-11-13 14:30:00 等
+            const match = timeStr.match(/(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})/);
+            if (match) {
+                const year = match[1];
+                const month = String(match[2]).padStart(2, '0');
+                const day = String(match[3]).padStart(2, '0');
+                const hour = String(match[4]).padStart(2, '0');
+                const minute = match[5];
+                const second = match[6];
+                return `${year}年${month}月${day}日 ${hour}:${minute}:${second}`;
+            }
+            
+            // 无法解析，返回原值
+            return timeValue;
+        }
+        
         // 从Excel时间字符串中提取可比较的时间键（忽略毫秒，只比较到秒）
         function extractTimeKeyFromExcel(timeValue) {
             if (!timeValue) return null;
@@ -736,8 +770,14 @@
             
             data.slice(1, 21).forEach(row => {
                 html += '<tr>';
-                row.forEach(cell => {
-                    html += `<td>${cell}</td>`;
+                row.forEach((cell, index) => {
+                    // 第一列时间格式化为 yyyy年mm月dd日 hh:mm:ss
+                    if (index === 0 && cell) {
+                        const formattedTime = formatTimeForDisplay(cell);
+                        html += `<td>${formattedTime}</td>`;
+                    } else {
+                        html += `<td>${cell}</td>`;
+                    }
                 });
                 html += '</tr>';
             });
