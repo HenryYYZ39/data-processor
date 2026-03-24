@@ -120,6 +120,10 @@
                     <label>开始记录时间：</label>
                     <input type="text" id="startTime4" placeholder="2025/03/23 08:30:00">
                     <p class="hint">格式：YYYY/MM/DD HH:MM:SS</p>
+                    
+                    <label style="margin-top: 15px;">采集时间间隔：</label>
+                    <input type="number" id="interval4" placeholder="1" value="1" min="0.1" step="0.1">
+                    <p class="hint">单位：秒（如：1表示1秒，2表示2秒，0.5表示500毫秒）</p>
                 </div>
             </div>
         </div>
@@ -251,7 +255,8 @@
                     progressText.textContent = '正在处理机床工况数据...';
                     progressFill.style.width = '75%';
                     const startTime = document.getElementById('startTime4').value.trim();
-                    await processMachineData(uploadedFiles[4], startTime);
+                    const interval = parseFloat(document.getElementById('interval4').value) || 1;
+                    await processMachineData(uploadedFiles[4], startTime, interval);
                     document.getElementById('status4').textContent = '✓ 已处理';
                 }
 
@@ -434,7 +439,7 @@
 
         // ==================== 第四框：机床工况数据处理 ====================
         
-        async function processMachineData(file, startTimeStr) {
+        async function processMachineData(file, startTimeStr, interval) {
             const rawData = await readExcelRaw(file);
             if (!rawData || rawData.data.length < 2) throw new Error('机床数据文件为空或数据不足');
             
@@ -445,24 +450,29 @@
             const startDate = parseStartTime(startTimeStr);
             if (!startDate) throw new Error('开始时间格式错误，请使用 YYYY/MM/DD HH:MM:SS');
             
-            const dataRows = rawData.data.slice(1); // 跳过表头
-            const secondGroups = new Map();
+            // 时间间隔（秒），默认1秒
+            const timeInterval = interval || 1;
             
-            // 按秒分组
+            const dataRows = rawData.data.slice(1); // 跳过表头
+            const intervalGroups = new Map();
+            
+            // 按时间间隔分组
             for (const row of dataRows) {
-                const second = Math.floor(parseFloat(row[0]));
+                const second = parseFloat(row[0]);
                 if (isNaN(second)) continue;
-                if (!secondGroups.has(second)) secondGroups.set(second, []);
-                secondGroups.get(second).push(row);
+                // 计算属于哪个时间间隔
+                const intervalIndex = Math.floor(second / timeInterval);
+                if (!intervalGroups.has(intervalIndex)) intervalGroups.set(intervalIndex, []);
+                intervalGroups.get(intervalIndex).push(row);
             }
             
-            // 计算每秒均值
+            // 计算每个时间间隔的均值
             const resampledData = [];
-            const sortedSeconds = Array.from(secondGroups.keys()).sort((a, b) => a - b);
+            const sortedIntervals = Array.from(intervalGroups.keys()).sort((a, b) => a - b);
             
-            for (const second of sortedSeconds) {
-                const rows = secondGroups.get(second);
-                const means = [second]; // 第0列是秒数
+            for (const intervalIndex of sortedIntervals) {
+                const rows = intervalGroups.get(intervalIndex);
+                const means = [intervalIndex * timeInterval]; // 第0列是起始秒数
                 
                 // 计算第2-7列的均值（索引1-6）
                 for (let col = 1; col <= 6; col++) {
@@ -474,8 +484,8 @@
                     means.push(count > 0 ? sum / count : 0);
                 }
                 
-                // 计算实际时间并格式化为字符串
-                const actualTime = new Date(startDate.getTime() + second * 1000);
+                // 计算实际时间（使用间隔中点或起始点）
+                const actualTime = new Date(startDate.getTime() + intervalIndex * timeInterval * 1000);
                 const timeStr = formatDateTimeForComparison(actualTime);
                 means.push(timeStr); // 第8列是格式化后的时间字符串
                 
@@ -483,9 +493,10 @@
             }
             
             extractedData.machineData = {
-                resampled: resampledData, // [秒数, 列2均值, 列3均值, 列4均值, 列5均值, 列6均值, 列7均值, 实际时间]
+                resampled: resampledData, // [起始秒数, 列2均值, 列3均值, 列4均值, 列5均值, 列6均值, 列7均值, 实际时间]
                 startDate: startDate,
-                headers: originalHeaders // 原始表头（第2-7列）
+                headers: originalHeaders, // 原始表头（第2-7列）
+                interval: timeInterval // 保存时间间隔
             };
         }
 
