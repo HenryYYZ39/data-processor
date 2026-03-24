@@ -660,17 +660,10 @@
             const baseY2 = tvData.y2ColIndex >= 0 ? parseFloat(firstDataRow[tvData.y2ColIndex]) : 0;
             const baseZ = tvData.zColIndex >= 0 ? parseFloat(firstDataRow[tvData.zColIndex]) : 0;
             
-            // 如果有机床数据，构建时间映射
-            let machineDataMap = null;
+            // 如果有机床数据，直接按行复制（不根据时间匹配）
+            let machineDataRows = null;
             if (hasMachineData) {
-                machineDataMap = new Map();
-                for (const machineRow of extractedData.machineData.resampled) {
-                    // machineRow[7] 已经是格式化后的时间字符串
-                    const timeKey = machineRow[7];
-                    machineDataMap.set(timeKey, machineRow.slice(1, 7)); // 获取6列数据
-                }
-                // 调试：输出机床数据的时间键
-                console.log('机床数据时间键:', Array.from(machineDataMap.keys()).slice(0, 5));
+                machineDataRows = extractedData.machineData.resampled;
             }
             
             // 处理每一行数据
@@ -679,36 +672,17 @@
                 const timeValue = row[tvData.timeColIndex];
                 const rowData = [timeValue];
                 
-                // 如果有机床数据，尝试匹配并插入
-                if (hasMachineData && machineDataMap) {
-                    let timeKey;
-                    // 如果timeValue已经是字符串，直接使用
-                    if (typeof timeValue === 'string') {
-                        timeKey = timeValue.trim();
-                    } else {
-                        timeKey = extractTimeKeyFromExcel(timeValue);
-                    }
-                    
-                    // 调试：输出前几个时间键
-                    if (i <= 5) {
-                        console.log('合并文件时间键:', timeKey, '原始值:', timeValue);
-                    }
-                    
-                    if (timeKey) {
-                        const machineValues = machineDataMap.get(timeKey);
-                        if (machineValues) {
-                            // 匹配成功，插入机床数据
-                            for (let j = 0; j < 6; j++) {
-                                rowData.push(machineValues[j]);
-                            }
-                        } else {
-                            // 无匹配，插入空值
-                            for (let j = 0; j < 6; j++) {
-                                rowData.push('');
-                            }
+                // 如果有机床数据，直接复制对应行的数据（第i-2行，因为跳过了表头和第一行数据）
+                if (hasMachineData && machineDataRows) {
+                    const machineRowIndex = i - 2;
+                    if (machineRowIndex < machineDataRows.length) {
+                        const machineRow = machineDataRows[machineRowIndex];
+                        // 复制6列数据（索引1-6）
+                        for (let j = 1; j <= 6; j++) {
+                            rowData.push(machineRow[j]);
                         }
                     } else {
-                        // 无法解析时间，插入空值
+                        // 机床数据不足，插入空值
                         for (let j = 0; j < 6; j++) {
                             rowData.push('');
                         }
