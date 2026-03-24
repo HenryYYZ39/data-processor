@@ -77,12 +77,11 @@
             <div class="upload-box">
                 <h3><span>1</span>实验记录文档</h3>
                 <div class="drop-zone" id="dropZone1" onclick="document.getElementById('file1').click()">
-                    <p>📄 点击或拖拽上传文件</p>
-                    <p class="file-types">支持：TXT（PDF/Word/图片功能需联网）</p>
+                    <p>📄 点击或拖拽上传 Excel</p>
+                    <p class="file-types">直接放入合并文件第一个Sheet</p>
                 </div>
-                <input type="file" id="file1" style="display:none" accept=".txt" onchange="handleFileSelect(event, 1)">
+                <input type="file" id="file1" style="display:none" accept=".xlsx,.xls" onchange="handleFileSelect(event, 1)">
                 <div class="file-list" id="fileList1"></div>
-                <div class="text-preview" id="textPreview1" style="display:none;"></div>
             </div>
             <div class="upload-box">
                 <h3><span>2</span>标定数据 (Excel)</h3>
@@ -189,12 +188,7 @@
                     <div class="remove" onclick="removeFile(${boxNum})">✕</div>
                 </div>
             `;
-            if (boxNum === 1 && file.name.endsWith('.txt')) {
-                file.text().then(text => {
-                    document.getElementById('textPreview1').style.display = 'block';
-                    document.getElementById('textPreview1').textContent = text.substring(0, 500) + (text.length > 500 ? '...' : '');
-                });
-            }
+
             if (boxNum === 4) document.getElementById('timeInputGroup4').style.display = 'block';
         }
 
@@ -208,7 +202,7 @@
             uploadedFiles[boxNum] = null;
             document.getElementById(`fileList${boxNum}`).innerHTML = '';
             document.getElementById(`file${boxNum}`).value = '';
-            if (boxNum === 1) document.getElementById('textPreview1').style.display = 'none';
+
             if (boxNum === 4) {
                 document.getElementById('timeInputGroup4').style.display = 'none';
                 document.getElementById('startTime4').value = '';
@@ -372,14 +366,10 @@
         }
 
         async function processDocument(file) {
-            const ext = file.name.split('.').pop().toLowerCase();
-            if (ext === 'txt') {
-                extractedData.text = await file.text();
-                extractedData.parsedWorkConditions = parseWorkConditions(extractedData.text);
-            } else {
-                extractedData.text = `[${file.name}] - 该格式需要联网支持`;
-                extractedData.parsedWorkConditions = [];
-            }
+            // 读取Excel文件，保存原始数据用于放入合并文件第一个Sheet
+            const rawData = await readExcelRaw(file);
+            if (!rawData || rawData.data.length === 0) throw new Error('实验记录文档为空');
+            extractedData.documentData = rawData.data; // 保存原始Excel数据
         }
 
         async function processCalibration(file) {
@@ -602,23 +592,15 @@
         async function generateExcel() {
             const wb = XLSX.utils.book_new();
 
-            // 第一页：工况内容
-            const ws1Data = [['日期/时间', '工况内容']];
-            const parsedConditions = extractedData.parsedWorkConditions;
-            if (parsedConditions.length > 0) {
-                for (const item of parsedConditions) {
-                    if (item.type === 'date') {
-                        ws1Data.push([item.date, '']);
-                    } else if (item.type === 'time') {
-                        ws1Data.push([item.time, item.content]);
-                    }
-                }
+            // 第一页：实验记录文档（直接放入第一个框上传的Excel数据）
+            if (extractedData.documentData && extractedData.documentData.length > 0) {
+                const ws1 = XLSX.utils.aoa_to_sheet(extractedData.documentData);
+                XLSX.utils.book_append_sheet(wb, ws1, '实验记录');
             } else {
-                ws1Data.push([extractedData.text, '']);
+                // 兼容旧版本，如果没有文档数据，创建空sheet
+                const ws1 = XLSX.utils.aoa_to_sheet([['无数据']]);
+                XLSX.utils.book_append_sheet(wb, ws1, '实验记录');
             }
-            const ws1 = XLSX.utils.aoa_to_sheet(ws1Data);
-            ws1['!cols'] = [{ wch: 20 }, { wch: 50 }];
-            XLSX.utils.book_append_sheet(wb, ws1, '工况内容');
 
             // 第二页：数据汇总（包含机床数据）
             const tvData = extractedData.tempVoltage;
