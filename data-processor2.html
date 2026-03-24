@@ -12,7 +12,9 @@
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh; padding: 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
         h1 { text-align: center; color: white; margin-bottom: 30px; font-size: 2rem; }
-        .upload-sections { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .upload-sections { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 30px; }
+        @media (max-width: 1400px) { .upload-sections { grid-template-columns: repeat(2, 1fr); } }
+        @media (max-width: 768px) { .upload-sections { grid-template-columns: 1fr; } }
         .upload-box { background: white; border-radius: 12px; padding: 25px; box-shadow: 0 10px 40px rgba(0,0,0,0.2); }
         .upload-box h3 { color: #333; margin-bottom: 15px; font-size: 1.1rem; }
         .upload-box h3 span { display: inline-block; width: 28px; height: 28px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 50%; text-align: center; line-height: 28px; margin-right: 10px; font-size: 0.9rem; }
@@ -84,7 +86,13 @@
             </div>
             <div class="upload-box">
                 <h3><span>2</span>标定数据 (Excel)</h3>
-                <div class="format-example" style="margin-bottom: 15px; padding: 10px; background: #f0f4ff; border-radius: 6px; border: 1px solid #667eea;">
+                <div class="drop-zone" id="dropZone2" onclick="document.getElementById('file2').click()">
+                    <p>📊 点击或拖拽上传 Excel</p>
+                    <p class="file-types">包含 x, y, z 标定值</p>
+                </div>
+                <input type="file" id="file2" style="display:none" accept=".xlsx,.xls" onchange="handleFileSelect(event, 2)">
+                <div class="file-list" id="fileList2"></div>
+                <div class="format-example" style="margin-top: 15px; padding: 10px; background: #f0f4ff; border-radius: 6px; border: 1px solid #667eea;">
                     <p style="color: #e74c3c; font-weight: bold; margin-bottom: 8px; font-size: 0.85rem;">⚠️ 注意！ 标定值格式：x y z</p>
                     <p style="color: #666; font-size: 0.8rem; margin-bottom: 8px;">下方写入对应的标定数据（两行三列）</p>
                     <table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; background: white;">
@@ -92,12 +100,6 @@
                         <tr><td style="border: 1px solid #ccc; padding: 4px 8px;">0.00436</td><td style="border: 1px solid #ccc; padding: 4px 8px;">0.00431</td><td style="border: 1px solid #ccc; padding: 4px 8px;">0.00419</td></tr>
                     </table>
                 </div>
-                <div class="drop-zone" id="dropZone2" onclick="document.getElementById('file2').click()">
-                    <p>📊 点击或拖拽上传 Excel</p>
-                    <p class="file-types">包含 x, y, z 标定值</p>
-                </div>
-                <input type="file" id="file2" style="display:none" accept=".xlsx,.xls" onchange="handleFileSelect(event, 2)">
-                <div class="file-list" id="fileList2"></div>
             </div>
             <div class="upload-box">
                 <h3><span>3</span>数据文件 (Excel)</h3>
