@@ -582,7 +582,7 @@
                 }
                 const hourStr = String(hour).padStart(2, '0');
                 
-                // 格式: yyyy/mm/dd hh:mm:ss.000 AM/PM（带毫秒）
+                // 格式: yyyy/mm/dd hh:mm:ss.000 AM/PM（毫秒固定为.000）
                 return `${year}/${month}/${day} ${hourStr}:${minute}:${second}.000 ${ampm}`;
             }
             
@@ -669,6 +669,8 @@
                     const timeKey = machineRow[7];
                     machineDataMap.set(timeKey, machineRow.slice(1, 7)); // 获取6列数据
                 }
+                // 调试：输出机床数据的时间键
+                console.log('机床数据时间键:', Array.from(machineDataMap.keys()).slice(0, 5));
             }
             
             // 处理每一行数据
@@ -679,7 +681,18 @@
                 
                 // 如果有机床数据，尝试匹配并插入
                 if (hasMachineData && machineDataMap) {
-                    const timeKey = extractTimeKeyFromExcel(timeValue);
+                    let timeKey;
+                    // 如果timeValue已经是字符串，直接使用
+                    if (typeof timeValue === 'string') {
+                        timeKey = timeValue.trim();
+                    } else {
+                        timeKey = extractTimeKeyFromExcel(timeValue);
+                    }
+                    
+                    // 调试：输出前几个时间键
+                    if (i <= 5) {
+                        console.log('合并文件时间键:', timeKey, '原始值:', timeValue);
+                    }
                     
                     if (timeKey) {
                         const machineValues = machineDataMap.get(timeKey);
