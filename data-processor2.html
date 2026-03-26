@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>机床热误差数据文件处理器 v16</title>
+    <title>机床热误差数据文件处理器 v17</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
@@ -72,7 +72,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>📊 机床热误差数据文件处理器 v16</h1>
+        <h1>📊 机床热误差数据文件处理器 v17</h1>
         <div class="upload-sections">
             <div class="upload-box">
                 <h3><span>1</span>实验记录文档</h3>
@@ -365,24 +365,49 @@
             return result;
         }
 
-        // 检测是否为日期格式（yyyy/mm/dd 或 yyyy-m-d）
-        function isDateFormat(value) {
-            if (typeof value !== 'string') return false;
-            const datePattern = /^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/;
-            return datePattern.test(value.trim());
-        }
-
-        // 格式化日期为 yyyy/mm/dd
-        function formatDateToYMD(value) {
-            if (typeof value !== 'string') return value;
-            const match = value.trim().match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
-            if (match) {
-                const year = match[1];
-                const month = String(match[2]).padStart(2, '0');
-                const day = String(match[3]).padStart(2, '0');
+        // 将Excel日期序列号或Date对象转换为 yyyy/mm/dd 格式字符串
+        function formatExcelDate(value) {
+            // 如果是Date对象
+            if (value instanceof Date) {
+                const year = value.getFullYear();
+                const month = String(value.getMonth() + 1).padStart(2, '0');
+                const day = String(value.getDate()).padStart(2, '0');
                 return `${year}/${month}/${day}`;
             }
+            
+            // 如果是数字（Excel日期序列号）
+            if (typeof value === 'number') {
+                // Excel日期序列号转换：从1900年1月1日开始计算
+                const excelEpoch = new Date(1899, 11, 30); // Excel的1900年1月1日实际上是1899年12月30日
+                const date = new Date(excelEpoch.getTime() + value * 24 * 60 * 60 * 1000);
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                return `${year}/${month}/${day}`;
+            }
+            
+            // 如果是字符串，尝试解析
+            if (typeof value === 'string') {
+                const match = value.trim().match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+                if (match) {
+                    const year = match[1];
+                    const month = String(match[2]).padStart(2, '0');
+                    const day = String(match[3]).padStart(2, '0');
+                    return `${year}/${month}/${day}`;
+                }
+            }
+            
             return value;
+        }
+
+        // 检测是否为日期（Date对象、数字序列号或日期字符串）
+        function isDateValue(value) {
+            if (value instanceof Date) return true;
+            if (typeof value === 'number' && value > 30000 && value < 50000) return true; // Excel日期序列号范围
+            if (typeof value === 'string') {
+                return /^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/.test(value.trim());
+            }
+            return false;
         }
 
         async function processDocument(file) {
@@ -393,12 +418,11 @@
             // 处理数据：检测日期列并格式化为 yyyy/mm/dd
             const data = rawData.data;
             if (data.length > 0) {
-                const headers = data[0];
                 // 检测哪些列是日期格式（检查第一行数据）
                 const dateCols = [];
                 if (data.length > 1) {
-                    for (let col = 0; col < headers.length; col++) {
-                        if (isDateFormat(data[1][col])) {
+                    for (let col = 0; col < data[0].length; col++) {
+                        if (isDateValue(data[1][col])) {
                             dateCols.push(col);
                         }
                     }
@@ -407,7 +431,7 @@
                 for (let row = 1; row < data.length; row++) {
                     for (const col of dateCols) {
                         if (data[row][col] !== undefined && data[row][col] !== null) {
-                            data[row][col] = formatDateToYMD(String(data[row][col]));
+                            data[row][col] = formatExcelDate(data[row][col]);
                         }
                     }
                 }
