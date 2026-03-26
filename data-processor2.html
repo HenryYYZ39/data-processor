@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>机床热误差数据文件处理器 v12</title>
+    <title>机床热误差数据文件处理器 v16</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
@@ -72,7 +72,7 @@
 </head>
 <body>
     <div class="container">
-        <h1>📊 机床热误差数据文件处理器 v12</h1>
+        <h1>📊 机床热误差数据文件处理器 v16</h1>
         <div class="upload-sections">
             <div class="upload-box">
                 <h3><span>1</span>实验记录文档</h3>
@@ -365,11 +365,55 @@
             return result;
         }
 
+        // 检测是否为日期格式（yyyy/mm/dd 或 yyyy-m-d）
+        function isDateFormat(value) {
+            if (typeof value !== 'string') return false;
+            const datePattern = /^\d{4}[\/\-]\d{1,2}[\/\-]\d{1,2}$/;
+            return datePattern.test(value.trim());
+        }
+
+        // 格式化日期为 yyyy/mm/dd
+        function formatDateToYMD(value) {
+            if (typeof value !== 'string') return value;
+            const match = value.trim().match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})$/);
+            if (match) {
+                const year = match[1];
+                const month = String(match[2]).padStart(2, '0');
+                const day = String(match[3]).padStart(2, '0');
+                return `${year}/${month}/${day}`;
+            }
+            return value;
+        }
+
         async function processDocument(file) {
             // 读取Excel文件，保存原始数据用于放入合并文件第一个Sheet
             const rawData = await readExcelRaw(file);
             if (!rawData || rawData.data.length === 0) throw new Error('实验记录文档为空');
-            extractedData.documentData = rawData.data; // 保存原始Excel数据
+            
+            // 处理数据：检测日期列并格式化为 yyyy/mm/dd
+            const data = rawData.data;
+            if (data.length > 0) {
+                const headers = data[0];
+                // 检测哪些列是日期格式（检查第一行数据）
+                const dateCols = [];
+                if (data.length > 1) {
+                    for (let col = 0; col < headers.length; col++) {
+                        if (isDateFormat(data[1][col])) {
+                            dateCols.push(col);
+                        }
+                    }
+                }
+                // 格式化日期列
+                for (let row = 1; row < data.length; row++) {
+                    for (const col of dateCols) {
+                        if (data[row][col] !== undefined && data[row][col] !== null) {
+                            data[row][col] = formatDateToYMD(String(data[row][col]));
+                        }
+                    }
+                }
+            }
+            
+            extractedData.documentData = data; // 保存处理后的Excel数据
         }
 
         async function processCalibration(file) {
