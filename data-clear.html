@@ -123,13 +123,13 @@
                     <label style="display:flex;align-items:center;gap:8px;margin:10px 0;font-size:0.85rem;"><input type="checkbox" id="enableSmoothing" checked>启用平滑</label>
                     <button class="btn btn-success" onclick="processData()">开始处理</button>
                 </div>
-                <div class="panel-section disabled" id="panel5">
-                    <h3>步骤5: 导出结果</h3>
+                <!-- 步骤5、6、7 常亮显示，无先后顺序 -->
+                <div class="panel-section" id="panel5">
+                    <h3>步骤5: 导出结果（可选）</h3>
                     <button class="btn btn-success" onclick="downloadResults()">下载处理后的数据</button>
                 </div>
                 
-                <!-- 新增：工况数据合并与OSS上传 -->
-                <div class="panel-section disabled" id="panelMachine">
+                <div class="panel-section" id="panelMachine">
                     <h3>步骤6: 上传工况数据并合并</h3>
                     <div class="upload-area" onclick="document.getElementById('machineFileInput').click()">
                         <div style="font-size:2rem;margin-bottom:10px;">⚙️</div>
@@ -146,11 +146,18 @@
                             <label>采集时间间隔（秒）</label>
                             <input type="number" id="machineInterval" value="1" min="0.1" step="0.1">
                         </div>
+                        <!-- 进度条 -->
+                        <div id="mergeProgress" style="display:none;margin:15px 0;">
+                            <div style="height:8px;background:#e0e0e0;border-radius:4px;overflow:hidden;">
+                                <div id="mergeProgressBar" style="height:100%;background:#667eea;width:0%;transition:width 0.3s;"></div>
+                            </div>
+                            <div id="mergeProgressText" style="text-align:center;color:#666;font-size:0.85rem;margin-top:5px;">准备中...</div>
+                        </div>
                         <button class="btn btn-primary" onclick="mergeWithMachineData()">合并数据</button>
                     </div>
                 </div>
                 
-                <div class="panel-section disabled" id="panelOSS">
+                <div class="panel-section" id="panelOSS">
                     <h3>步骤7: 上传到阿里云OSS</h3>
                     <div class="input-group"><label>Bucket名称</label><input type="text" id="ossBucket" placeholder="your-bucket-name"></div>
                     <div class="input-group"><label>Endpoint</label><input type="text" id="ossEndpoint" placeholder="oss-cn-hangzhou.aliyuncs.com"></div>
@@ -371,7 +378,10 @@
             }
             showCharts();
             showStatus('处理完成', 'success');
-            activatePanel('panel5');
+            // 步骤5、6、7 同时激活，无先后顺序
+            document.getElementById('panel5').classList.add('active');
+            document.getElementById('panelMachine').classList.add('active');
+            document.getElementById('panelOSS').classList.add('active');
             updateStep(5);
         }
 
@@ -677,9 +687,9 @@
             } catch (err) { showStatus('读取失败: ' + err.message, 'error'); }
         }
         
-        function mergeWithMachineData() {
-            if (!appData.processedData || !machineRawData) {
-                showStatus('请先完成传感器处理并上传工况数据', 'error');
+        async function mergeWithMachineData() {
+            if (!machineRawData) {
+                showStatus('请先上传工况数据', 'error');
                 return;
             }
             
@@ -690,9 +700,18 @@
             const startDate = new Date(startTimeStr);
             if (isNaN(startDate)) { showStatus('时间格式错误', 'error'); return; }
             
+            // 显示进度条
+            const progressDiv = document.getElementById('mergeProgress');
+            const progressBar = document.getElementById('mergeProgressBar');
+            const progressText = document.getElementById('mergeProgressText');
+            progressDiv.style.display = 'block';
+            
             // 处理工况数据：按时间间隔分组并计算均值
             const machineRows = machineRawData.slice(1);
             const groups = new Map();
+            
+            progressText.textContent = '正在分组处理...';
+            progressBar.style.width = '30%';
             
             for (const row of machineRows) {
                 const second = parseFloat(row[0]);
@@ -705,6 +724,10 @@
             // 计算每组的均值
             const resampled = [];
             const sortedIdx = Array.from(groups.keys()).sort((a, b) => a - b);
+            
+            progressText.textContent = '正在计算均值...';
+            progressBar.style.width = '60%';
+            
             for (const idx of sortedIdx) {
                 const rows = groups.get(idx);
                 const time = new Date(startDate.getTime() + idx * interval * 1000);
@@ -720,15 +743,27 @@
                 resampled.push(means);
             }
             
+            progressText.textContent = '正在合并数据...';
+            progressBar.style.width = '80%';
+            
+            // 获取传感器处理结果（如果没有下载过，重新生成）
+            let processedData = appData.processedData;
+            if (!processedData) {
+                processedData = generateProcessedData();
+            }
+            
             // 合并数据
-            const pHeaders = appData.processedData[0];
+            const pHeaders = processedData[0];
             const mHeaders = ['工况时间', '工况1', '工况2', '工况3', '工况4', '工况5', '工况6'];
             const merged = [[...mHeaders, ...pHeaders]];
             
-            const minLen = Math.min(resampled.length, appData.processedData.length - 1);
+            const minLen = Math.min(resampled.length, processedData.length - 1);
             for (let i = 0; i < minLen; i++) {
-                merged.push([...resampled[i], ...appData.processedData[i + 1]]);
+                merged.push([...resampled[i], ...processedData[i + 1]]);
             }
+            
+            progressText.textContent = '正在生成文件...';
+            progressBar.style.width = '95%';
             
             // 创建工作簿
             const wb = XLSX.utils.book_new();
@@ -738,11 +773,37 @@
             
             // 下载
             XLSX.writeFile(wb, '合并数据_' + new Date().toISOString().split('T')[0] + '.xlsx');
+            
+            progressText.textContent = '完成！';
+            progressBar.style.width = '100%';
             showStatus('合并完成并已下载', 'success');
             
-            // 显示OSS上传面板
-            document.getElementById('panelOSS').classList.remove('disabled');
-            document.getElementById('panelOSS').classList.add('active');
+            // 3秒后隐藏进度条
+            setTimeout(() => {
+                progressDiv.style.display = 'none';
+                progressBar.style.width = '0%';
+            }, 3000);
+        }
+        
+        // 生成处理后的数据（用于合并时未下载的情况）
+        function generateProcessedData() {
+            const wsData = [];
+            const header = ['时间'];
+            appData.sensorColumns.forEach((c, i) => header.push(`传感器${i + 1}`));
+            appData.tempColumns.forEach((c, i) => header.push(`温度${i + 1}`));
+            wsData.push(header);
+
+            for (let r = 1; r < appData.timeData.length; r++) {
+                const row = [appData.timeData[r]];
+                for (let i = 0; i < appData.sensorColumns.length; i++) {
+                    row.push(appData.correctedData[i][r]);
+                }
+                for (let i = 0; i < appData.tempColumns.length; i++) {
+                    row.push(appData.tempFilteredData[i][r]);
+                }
+                wsData.push(row);
+            }
+            return wsData;
         }
         
         async function uploadToOSS() {
