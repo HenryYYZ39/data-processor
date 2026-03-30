@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>传感器数据处理工具</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; min-height: 100vh; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 20px; padding: 30px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #333; margin-bottom: 30px; font-size: 1.8rem; }
+        .step-indicator { display: flex; justify-content: center; margin-bottom: 30px; flex-wrap: wrap; gap: 10px; }
+        .step-item { display: flex; align-items: center; padding: 10px 20px; background: #f0f0f0; border-radius: 25px; font-size: 0.85rem; color: #666; }
+        .step-item.active { background: #667eea; color: white; }
+        .step-item.completed { background: #4caf50; color: white; }
+        .main-content { display: grid; grid-template-columns: 350px 1fr; gap: 30px; }
+        @media (max-width: 1024px) { .main-content { grid-template-columns: 1fr; } }
+        .left-panel { display: flex; flex-direction: column; gap: 20px; }
+        .panel-section { background: #f8f9fa; border-radius: 15px; padding: 20px; border: 2px solid transparent; }
+        .panel-section.active { border-color: #667eea; background: #f0f4ff; }
+        .panel-section.disabled { opacity: 0.5; pointer-events: none; }
+        .panel-section h3 { color: #333; margin-bottom: 15px; font-size: 1rem; }
+        .upload-area { border: 2px dashed #ccc; border-radius: 12px; padding: 30px 20px; text-align: center; cursor: pointer; transition: all 0.3s; background: white; }
+        .upload-area:hover { border-color: #667eea; background: #f0f4ff; }
+        .upload-area.has-file { border-color: #4caf50; background: #e8f5e9; }
+        .sheet-list { display: flex; flex-direction: column; gap: 8px; }
+        .sheet-item { padding: 12px; background: white; border: 2px solid #e0e0e0; border-radius: 8px; cursor: pointer; }
+        .sheet-item:hover { border-color: #667eea; }
+        .sheet-item.selected { border-color: #667eea; background: #667eea; color: white; }
+        .column-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; max-height: 200px; overflow-y: auto; }
+        .column-item { padding: 10px; background: white; border: 2px solid #e0e0e0; border-radius: 8px; cursor: pointer; text-align: center; font-size: 0.8rem; }
+        .column-item:hover { border-color: #667eea; }
+        .column-item.selected { border-color: #4caf50; background: #e8f5e9; }
+        .column-item input { display: none; }
+        .input-group { margin-bottom: 12px; }
+        .input-group label { display: block; color: #555; font-size: 0.85rem; margin-bottom: 5px; }
+        .input-group input { width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; }
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 10px; font-size: 0.95rem; cursor: pointer; margin-top: 10px; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-success { background: #4caf50; color: white; }
+        .right-panel { background: #f8f9fa; border-radius: 15px; padding: 20px; min-height: 500px; }
+        .chart-container { background: white; border-radius: 12px; padding: 15px; margin-bottom: 15px; }
+        .chart-container h4 { color: #333; margin-bottom: 10px; font-size: 0.9rem; }
+        .params-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        .param-item { background: white; padding: 10px; border-radius: 8px; }
+        .param-item label { display: block; color: #666; font-size: 0.8rem; margin-bottom: 3px; }
+        .param-item input { width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; }
+        .status-bar { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 12px 25px; border-radius: 25px; color: white; display: none; z-index: 1000; }
+        .status-bar.show { display: block; }
+        .status-bar.success { background: #4caf50; }
+        .status-bar.error { background: #f44336; }
+        .status-bar.info { background: #2196f3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>传感器数据处理工具</h1>
+        <div class="step-indicator">
+            <div class="step-item active" id="step1"><span>1.选择文件</span></div>
+            <div class="step-item" id="step2"><span>2.选择列</span></div>
+            <div class="step-item" id="step3"><span>3.参数设置</span></div>
+            <div class="step-item" id="step4"><span>4.处理数据</span></div>
+            <div class="step-item" id="step5"><span>5.导出结果</span></div>
+        </div>
+        <div class="main-content">
+            <div class="left-panel">
+                <div class="panel-section active" id="panel1">
+                    <h3>步骤1: 选择Excel文件</h3>
+                    <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                        <div style="font-size:2rem;margin-bottom:10px;">📊</div>
+                        <div>点击上传Excel文件</div>
+                        <div id="fileNameDisplay" style="color:#4caf50;margin-top:10px;"></div>
+                    </div>
+                    <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="handleFileUpload(event)">
+                </div>
+                <div class="panel-section disabled" id="panelSheet">
+                    <h3>选择工作表</h3>
+                    <div class="sheet-list" id="sheetList"></div>
+                </div>
+                <div class="panel-section disabled" id="panel2">
+                    <h3>步骤2: 选择数据列</h3>
+                    <div style="margin-bottom:10px;"><label style="color:#667eea;font-size:0.85rem;">传感器列（必选）:</label><div class="column-grid" id="sensorColList"></div></div>
+                    <div><label style="color:#666;font-size:0.85rem;">温度列（可选）:</label><div class="column-grid" id="tempColList"></div></div>
+                    <button class="btn btn-primary" onclick="confirmColumnSelection()">确认选择</button>
+                </div>
+                <div class="panel-section disabled" id="panel3">
+                    <h3>步骤3: 标定系数</h3>
+                    <div id="calibrationInputs"></div>
+                    <div id="tempFilterGroup" style="display:none;margin-top:10px;">
+                        <label style="font-size:0.85rem;">温度滤波窗口:</label>
+                        <input type="number" id="tempWindowSize" value="10" min="1" style="width:100%;padding:8px;border:2px solid #e0e0e0;border-radius:8px;">
+                    </div>
+                    <button class="btn btn-primary" onclick="applyCalibration()">应用标定</button>
+                </div>
+                <div class="panel-section disabled" id="panel4">
+                    <h3>步骤4: 台阶修正参数</h3>
+                    <div class="params-grid">
+                        <div class="param-item"><label>斜率窗口</label><input type="number" id="windowSize" value="10" min="3"></div>
+                        <div class="param-item"><label>阈值倍数</label><input type="number" id="kSigma" value="5" min="1" step="0.5"></div>
+                        <div class="param-item"><label>最小跳变长度</label><input type="number" id="minSegmentLength" value="5" min="1"></div>
+                        <div class="param-item"><label>左扩展</label><input type="number" id="expandLeft" value="15" min="0"></div>
+                        <div class="param-item"><label>右扩展</label><input type="number" id="expandRight" value="15" min="0"></div>
+                        <div class="param-item"><label>平滑边界</label><input type="number" id="smoothMargin" value="10" min="1"></div>
+                    </div>
+                    <label style="display:flex;align-items:center;gap:8px;margin:10px 0;font-size:0.85rem;"><input type="checkbox" id="enableSmoothing" checked>启用平滑</label>
+                    <button class="btn btn-success" onclick="processData()">开始处理</button>
+                </div>
+                <div class="panel-section disabled" id="panel5">
+                    <h3>步骤5: 导出结果</h3>
+                    <button class="btn btn-success" onclick="downloadResults()">下载处理后的数据</button>
+                </div>
+            </div>
+            <div class="right-panel" id="chartsArea">
+                <div style="text-align:center;color:#999;padding:80px 20px;">
+                    <div style="font-size:3rem;margin-bottom:15px;">📈</div>
+                    <h3>图表将在这里显示</h3>
+                    <p style="font-size:0.9rem;">请按左侧步骤完成数据处理</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="status-bar" id="statusBar"></div>
+
+    <script>
+        const appData = { file: null, workbook: null, selectedSheet: null, rawData: null, timeColumn: 0, sensorColumns: [], tempColumns: [], calibrationFactors: [], tempWindowSize: 1, calibratedData: null, correctedData: null, tempFilteredData: null, jumpSegments: {}, timeData: null };
+
+        function showStatus(msg, type) {
+            const bar = document.getElementById('statusBar');
+            bar.textContent = msg;
+            bar.className = 'status-bar ' + type + ' show';
+            setTimeout(() => bar.classList.remove('show'), 3000);
+        }
+
+        function updateStep(step) {
+            for (let i = 1; i <= 5; i++) {
+                const el = document.getElementById('step' + i);
+                el.classList.remove('active', 'completed');
+                if (i < step) el.classList.add('completed');
+                else if (i === step) el.classList.add('active');
+            }
+        }
+
+        function activatePanel(id) {
+            document.querySelectorAll('.panel-section').forEach(p => { p.classList.remove('active'); p.classList.add('disabled'); });
+            document.getElementById(id).classList.remove('disabled');
+            document.getElementById(id).classList.add('active');
+        }
+
+        async function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            appData.file = file;
+            document.getElementById('fileNameDisplay').textContent = file.name;
+            document.getElementById('uploadArea').classList.add('has-file');
+            showStatus('读取文件中...', 'info');
+            try {
+                const data = await file.arrayBuffer();
+                appData.workbook = XLSX.read(data, { type: 'array' });
+                const sheets = appData.workbook.SheetNames;
+                if (sheets.length === 1) selectSheet(sheets[0]);
+                else showSheetSelection(sheets);
+            } catch (err) { showStatus('读取失败: ' + err.message, 'error'); }
+        }
+
+        function showSheetSelection(sheets) {
+            const list = document.getElementById('sheetList');
+            list.innerHTML = '';
+            sheets.forEach((name, i) => {
+                const item = document.createElement('div');
+                item.className = 'sheet-item';
+                item.textContent = '📋 ' + name;
+                item.onclick = () => selectSheet(name);
+                list.appendChild(item);
+            });
+            activatePanel('panelSheet');
+        }
+
+        function selectSheet(name) {
+            appData.selectedSheet = name;
+            const ws = appData.workbook.Sheets[name];
+            const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+            appData.rawData = data.filter(row => row.some(c => c !== null && c !== ''));
+            if (appData.rawData.length < 2) { showStatus('数据为空', 'error'); return; }
+            appData.rawData = appData.rawData.filter((row, i) => i === 0 || row.every(c => c !== null && !isNaN(parseFloat(c))));
+            showStatus(`已加载: ${name}, ${appData.rawData.length - 1}行`, 'success');
+            activatePanel('panel2');
+            updateStep(2);
+            showColumnSelection();
+        }
+
+        function showColumnSelection() {
+            const cols = appData.rawData[0].length;
+            const sList = document.getElementById('sensorColList');
+            const tList = document.getElementById('tempColList');
+            sList.innerHTML = ''; tList.innerHTML = '';
+            for (let i = 0; i < cols; i++) {
+                const name = `列${i + 1}`;
+                const sItem = createColItem(i, name, 'sensor');
+                const tItem = createColItem(i, name, 'temp');
+                sList.appendChild(sItem);
+                tList.appendChild(tItem);
+            }
+        }
+
+        function createColItem(idx, name, type) {
+            const div = document.createElement('div');
+            div.className = 'column-item';
+            div.innerHTML = `<input type="checkbox" id="${type}_${idx}" value="${idx}" onchange="toggleCol(this,'${type}')"><label for="${type}_${idx}">${name}</label>`;
+            div.onclick = (e) => { if (e.target.tagName !== 'INPUT') document.getElementById(`${type}_${idx}`).click(); };
+            return div;
+        }
+
+        function toggleCol(cb, type) {
+            const val = parseInt(cb.value);
+            const item = cb.closest('.column-item');
+            if (cb.checked) { item.classList.add('selected'); type === 'sensor' ? appData.sensorColumns.push(val) : appData.tempColumns.push(val); }
+            else { item.classList.remove('selected'); type === 'sensor' ? appData.sensorColumns = appData.sensorColumns.filter(c => c !== val) : appData.tempColumns = appData.tempColumns.filter(c => c !== val); }
+        }
+
+        function confirmColumnSelection() {
+            if (appData.sensorColumns.length === 0) { showStatus('请至少选择一个传感器列', 'error'); return; }
+            showStatus(`已选${appData.sensorColumns.length}个传感器列`, 'success');
+            activatePanel('panel3');
+            updateStep(3);
+            showCalibInputs();
+        }
+
+        function showCalibInputs() {
+            const container = document.getElementById('calibrationInputs');
+            container.innerHTML = '';
+            appData.sensorColumns.forEach((col, i) => {
+                const div = document.createElement('div');
+                div.className = 'input-group';
+                div.innerHTML = `<label>传感器${i + 1} (列${col + 1})</label><input type="number" id="calib_${i}" value="1" step="0.0001">`;
+                container.appendChild(div);
+            });
+            if (appData.tempColumns.length > 0) document.getElementById('tempFilterGroup').style.display = 'block';
+        }
+
+        function applyCalibration() {
+            appData.calibrationFactors = [];
+            for (let i = 0; i < appData.sensorColumns.length; i++) {
+                const f = parseFloat(document.getElementById(`calib_${i}`).value);
+                if (isNaN(f) || f === 0) { showStatus(`传感器${i + 1}标定系数无效`, 'error'); return; }
+                appData.calibrationFactors.push(f);
+            }
+            if (appData.tempColumns.length > 0) appData.tempWindowSize = parseInt(document.getElementById('tempWindowSize').value) || 1;
+            appData.calibratedData = [];
+            for (let i = 0; i < appData.sensorColumns.length; i++) {
+                const col = appData.sensorColumns[i];
+                const vals = [];
+                for (let r = 1; r < appData.rawData.length; r++) vals.push(parseFloat(appData.rawData[r][col]) || 0);
+                const calibrated = vals.map(v => v / appData.calibrationFactors[i]);
+                const offset = calibrated[0];
+                appData.calibratedData.push(calibrated.map(v => v - offset));
+            }
+            showStatus('标定完成', 'success');
+            activatePanel('panel4');
+            updateStep(4);
+        }
+
+        function processData() {
+            showStatus('处理中...', 'info');
+            const params = { windowSize: parseInt(document.getElementById('windowSize').value) || 10, kSigma: parseFloat(document.getElementById('kSigma').value) || 5, minSegmentLength: parseInt(document.getElementById('minSegmentLength').value) || 5, expandLeft: parseInt(document.getElementById('expandLeft').value) || 15, expandRight: parseInt(document.getElementById('expandRight').value) || 15, smoothMargin: parseInt(document.getElementById('smoothMargin').value) || 10, enableSmoothing: document.getElementById('enableSmoothing').checked };
+            appData.timeData = [];
+            for (let r = 1; r < appData.rawData.length; r++) appData.timeData.push(appData.rawData[r][appData.timeColumn]);
+            appData.correctedData = [];
+            appData.jumpSegments = {};
+            for (let i = 0; i < appData.sensorColumns.length; i++) {
+                const result = correctStep(appData.calibratedData[i], params);
+                appData.correctedData.push(result.corrected);
+                appData.jumpSegments[i] = result.segments;
+            }
+            appData.tempRawData = [];
+            appData.tempFilteredData = [];
+            for (let i = 0; i < appData.tempColumns.length; i++) {
+                const col = appData.tempColumns[i];
+                const vals = [];
+                for (let r = 1; r < appData.rawData.length; r++) vals.push(parseFloat(appData.rawData[r][col]) || 0);
+                appData.tempRawData.push(vals);
+                if (appData.tempWindowSize > 1) appData.tempFilteredData.push(movMean(vals, appData.tempWindowSize));
+                else appData.tempFilteredData.push([...vals]);
+            }
+            showCharts();
+            showStatus('处理完成', 'success');
+            activatePanel('panel5');
+            updateStep(5);
+        }
+
+        function correctStep(y, params) {
+            const n = y.length;
+            const slopes = new Array(n).fill(0);
+            const x = Array.from({ length: params.windowSize }, (_, i) => i + 1);
+            const xMean = x.reduce((a, b) => a + b, 0) / params.windowSize;
+            const xC = x.map(xi => xi - xMean);
+            const denom = xC.reduce((s, xi) => s + xi * xi, 0);
+            for (let i = params.windowSize - 1; i < n; i++) {
+                const yWin = y.slice(i - params.windowSize + 1, i + 1);
+                const yMean = yWin.reduce((a, b) => a + b, 0) / params.windowSize;
+                const yC = yWin.map(yi => yi - yMean);
+                slopes[i] = xC.reduce((s, xi, j) => s + xi * yC[j], 0) / denom;
+            }
+            const validSlopes = slopes.slice(params.windowSize - 1);
+            const sMean = validSlopes.reduce((a, b) => a + b, 0) / validSlopes.length;
+            const sStd = Math.sqrt(validSlopes.reduce((s, v) => s + (v - sMean) ** 2, 0) / validSlopes.length);
+            const threshold = sStd * params.kSigma;
+            let isJump = slopes.map(s => Math.abs(s) > threshold);
+            let clean = new Array(n).fill(false);
+            let cnt = 0;
+            for (let i = 0; i < n; i++) {
+                if (isJump[i]) cnt++;
+                else { if (cnt >= params.minSegmentLength) for (let j = i - cnt; j < i; j++) clean[j] = true; cnt = 0; }
+            }
+            if (cnt >= params.minSegmentLength) for (let j = n - cnt; j < n; j++) clean[j] = true;
+            let expanded = [...clean];
+            for (let i = 0; i < n; i++) if (clean[i]) { for (let j = Math.max(0, i - params.expandLeft); j <= Math.min(n - 1, i + params.expandRight); j++) expanded[j] = true; }
+            const segments = [];
+            let inJump = false, start = 0;
+            for (let i = 0; i < n; i++) {
+                if (expanded[i] && !inJump) { inJump = true; start = i; }
+                else if (!expanded[i] && inJump) { inJump = false; segments.push({ start: start, end: i - 1 }); }
+            }
+            if (inJump) segments.push({ start: start, end: n - 1 });
+            let yCorr = [...y];
+            for (const seg of segments) {
+                const s = seg.start, e = seg.end;
+                if (s < params.smoothMargin || e + params.smoothMargin >= n) continue;
+                const before = yCorr.slice(s - params.smoothMargin, s).reduce((a, b) => a + b, 0) / params.smoothMargin;
+                const after = yCorr.slice(e + 1, e + params.smoothMargin + 1).reduce((a, b) => a + b, 0) / params.smoothMargin;
+                const delta = after - before;
+                for (let i = e; i < n; i++) yCorr[i] -= delta;
+            }
+            if (params.enableSmoothing) {
+                for (const seg of segments) {
+                    const s = seg.start, e = seg.end;
+                    if (s < 1 || e >= n - 1) continue;
+                    const yStart = yCorr[s - 1], yEnd = yCorr[e + 1];
+                    for (let i = 0; i <= e - s; i++) yCorr[s + i] = yStart + (yEnd - yStart) * (i + 1) / (e - s + 2);
+                }
+            }
+            return { corrected: yCorr, segments: segments };
+        }
+
+        function movMean(arr, win) {
+            const result = [];
+            for (let i = 0; i < arr.length; i++) {
+                const start = Math.max(0, i - Math.floor(win / 2));
+                const end = Math.min(arr.length, i + Math.floor(win / 2) + 1);
+                const sum = arr.slice(start, end).reduce((a, b) => a + b, 0);
+                result.push(sum / (end - start));
+            }
+            return result;
+        }
+
+        function showCharts() {
+            const area = document.getElementById('chartsArea');
+            area.innerHTML = '';
+            for (let i = 0; i < appData.sensorColumns.length; i++) {
+                const div = document.createElement('div');
+                div.className = 'chart-container';
+                div.innerHTML = `<h4>传感器 ${i + 1} (${appData.jumpSegments[i].length}个跳变)</h4><div style="height:250px;"><canvas id="chart_${i}"></canvas></div>`;
+                area.appendChild(div);
+                setTimeout(() => drawChart(i), i * 100);
+            }
+            if (appData.tempColumns.length > 0) {
+                const div = document.createElement('div');
+                div.className = 'chart-container';
+                div.innerHTML = `<h4>温度数据</h4><div style="height:250px;"><canvas id="chart_temp"></canvas></div>`;
+                area.appendChild(div);
+                setTimeout(() => drawTempChart(), appData.sensorColumns.length * 100);
+            }
+        }
+
+        function drawChart(idx) {
+            const ctx = document.getElementById(`chart_${idx}`);
+            if (!ctx) return;
+            const time = appData.timeData;
+            const raw = appData.calibratedData[idx];
+            const corr = appData.correctedData[idx];
+            const segs = appData.jumpSegments[idx];
+            new Chart(ctx, {
+                type: 'line',
+                data: { labels: time, datasets: [{ label: '原始', data: raw, borderColor: 'rgba(52,152,219,0.6)', pointRadius: 0 }, { label: '修正后', data: corr, borderColor: 'rgba(231,76,60,0.9)', pointRadius: 0 }] },
+                options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false } }
+            });
+        }
+
+        function drawTempChart() {
+            const ctx = document.getElementById('chart_temp');
+            if (!ctx) return;
+            const datasets = [];
+            for (let i = 0; i < appData.tempColumns.length; i++) {
+                datasets.push({ label: `温度${i + 1} 原始`, data: appData.tempRawData[i], borderColor: `hsl(${i * 60},70%,50%)`, pointRadius: 0 });
+                if (appData.tempWindowSize > 1) datasets.push({ label: `温度${i + 1} 滤波`, data: appData.tempFilteredData[i], borderColor: `hsl(${i * 60},70%,30%)`, pointRadius: 0 });
+            }
+            new Chart(ctx, { type: 'line', data: { labels: appData.timeData, datasets: datasets }, options: { responsive: true, maintainAspectRatio: false } });
+        }
+
+        function downloadResults() {
+            const wsData = [];
+            const header = ['时间'];
+            appData.sensorColumns.forEach((c, i) => header.push(`传感器${i + 1}_原始`, `传感器${i + 1}_修正`));
+            appData.tempColumns.forEach((c, i) => header.push(`温度${i + 1}`));
+            wsData.push(header);
+            for (let r = 0; r < appData.timeData.length; r++) {
+                const row = [appData.timeData[r]];
+                for (let i = 0; i < appData.sensorColumns.length; i++) {
+                    row.push(appData.calibratedData[i][r], appData.correctedData[i][r]);
+                }
+                for (let i = 0; i < appData.tempColumns.length; i++) {
+                    row.push(appData.tempFilteredData[i][r]);
+                }
+                wsData.push(row);
+            }
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, '处理结果');
+            XLSX.writeFile(wb, '传感器数据处理结果.xlsx');
+            showStatus('下载完成', 'success');
+        }
+    </script>
+</body>
+</html>
