@@ -79,6 +79,15 @@
                     <h3>选择工作表</h3>
                     <div class="sheet-list" id="sheetList"></div>
                 </div>
+                <div class="panel-section disabled" id="panelColConfig">
+                    <h3>列数配置</h3>
+                    <div class="input-group">
+                        <label>原始数据列数（不含修正后的列）</label>
+                        <input type="number" id="originalColCount" value="13" min="1">
+                        <p style="font-size:0.75rem;color:#666;margin-top:5px;">如果文件包含修正后的数据列，请填写原始列数</p>
+                    </div>
+                    <button class="btn btn-primary" onclick="confirmColConfig()">确认并继续</button>
+                </div>
                 <div class="panel-section disabled" id="panel2">
                     <h3>步骤2: 选择数据列</h3>
                     <div style="margin-bottom:10px;"><label style="color:#667eea;font-size:0.85rem;">传感器列（必选）:</label><div class="column-grid" id="sensorColList"></div></div>
@@ -215,7 +224,27 @@
             
             console.log('清洗后列数:', appData.rawData[0]?.length, '行数:', appData.rawData.length);
             
-            showStatus(`已加载: ${name}, ${appData.rawData.length - 1}行, ${appData.rawData[0].length}列`, 'success');
+            const actualCols = appData.rawData[0]?.length || 0;
+            showStatus(`已加载: ${name}, ${appData.rawData.length - 1}行, ${actualCols}列`, 'success');
+            
+            // 显示列数配置界面
+            document.getElementById('originalColCount').value = actualCols;
+            document.getElementById('originalColCount').max = actualCols;
+            activatePanel('panelColConfig');
+        }
+
+        function confirmColConfig() {
+            const colCount = parseInt(document.getElementById('originalColCount').value);
+            if (isNaN(colCount) || colCount < 1) {
+                showStatus('请输入有效的列数', 'error');
+                return;
+            }
+            
+            // 截断数据，只保留前 N 列
+            appData.rawData = appData.rawData.map(row => row.slice(0, colCount));
+            
+            console.log('截断后列数:', appData.rawData[0].length);
+            
             activatePanel('panel2');
             updateStep(2);
             showColumnSelection();
