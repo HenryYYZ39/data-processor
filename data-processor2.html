@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>机床热误差数据文件处理器 v19</title>
+    <title>机床热误差数据文件处理器 v20</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
@@ -68,11 +68,27 @@
         .time-input-group input { width: 100%; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.95rem; }
         .time-input-group input:focus { outline: none; border-color: #c41e3a; }
         .time-input-group .hint { margin-top: 5px; color: #666; font-size: 0.8rem; }
+        .step-correction-config { margin-top: 15px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #3498db; }
+        .step-correction-config h4 { color: #333; margin-bottom: 12px; font-size: 0.95rem; color: #3498db; }
+        .config-row { display: flex; align-items: center; margin-bottom: 8px; }
+        .config-row label { width: 100px; color: #666; font-size: 0.85rem; }
+        .config-row input[type="number"] { flex: 1; padding: 6px 10px; border: 1px solid #ddd; border-radius: 4px; font-size: 0.85rem; }
+        .config-row.checkbox-row { align-items: center; }
+        .config-row.checkbox-row input[type="checkbox"] { width: auto; margin-left: 0; }
+        .config-actions { margin-top: 12px; display: flex; gap: 8px; }
+        .config-btn { flex: 1; padding: 8px 12px; background: #3498db; color: white; border: none; border-radius: 4px; font-size: 0.85rem; cursor: pointer; transition: background 0.2s; }
+        .config-btn:hover { background: #2980b9; }
+        .config-btn.secondary { background: #95a5a6; }
+        .config-btn.secondary:hover { background: #7f8c8d; }
+        .correction-status { margin-top: 10px; padding: 8px; border-radius: 4px; font-size: 0.85rem; display: none; }
+        .correction-status.success { display: block; background: #d4edda; color: #155724; }
+        .correction-status.error { display: block; background: #f8d7da; color: #721c24; }
+        .correction-chart { margin-top: 15px; max-height: 500px; overflow: auto; background: white; border-radius: 8px; padding: 10px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>📊 机床热误差数据文件处理器 v19</h1>
+        <h1>📊 机床热误差数据文件处理器 v20</h1>
         <div class="upload-sections">
             <div class="upload-box">
                 <h3><span>1</span>实验记录文档</h3>
@@ -91,6 +107,42 @@
                 </div>
                 <input type="file" id="file2" style="display:none" accept=".xlsx,.xls" onchange="handleFileSelect(event, 2)">
                 <div class="file-list" id="fileList2"></div>
+                <div class="step-correction-config" id="stepCorrectionConfig" style="display:none;">
+                    <h4>🔧 台阶修正参数</h4>
+                    <div class="config-row">
+                        <label>斜率窗口:</label>
+                        <input type="number" id="windowSize" value="10" min="3" max="50">
+                    </div>
+                    <div class="config-row">
+                        <label>阈值倍数:</label>
+                        <input type="number" id="kSigma" value="5" min="1" max="20" step="0.5">
+                    </div>
+                    <div class="config-row">
+                        <label>最小跳变长度:</label>
+                        <input type="number" id="minSegmentLength" value="5" min="1" max="20">
+                    </div>
+                    <div class="config-row">
+                        <label>左扩展点数:</label>
+                        <input type="number" id="expandLeft" value="15" min="0" max="50">
+                    </div>
+                    <div class="config-row">
+                        <label>右扩展点数:</label>
+                        <input type="number" id="expandRight" value="15" min="0" max="50">
+                    </div>
+                    <div class="config-row">
+                        <label>平滑边界:</label>
+                        <input type="number" id="smoothMargin" value="10" min="1" max="50">
+                    </div>
+                    <div class="config-row checkbox-row">
+                        <label>启用平滑:</label>
+                        <input type="checkbox" id="enableSmoothing" checked>
+                    </div>
+                    <div class="config-actions">
+                        <button class="config-btn" onclick="applyStepCorrection()">应用台阶修正</button>
+                        <button class="config-btn secondary" onclick="resetStepCorrection()">重置</button>
+                    </div>
+                    <div class="correction-status" id="correctionStatus"></div>
+                </div>
             </div>
             <div class="upload-box">
                 <h3><span>3</span>机床运行工况 (Excel)</h3>
@@ -172,7 +224,29 @@
                 </div>
             `;
 
+            if (boxNum === 2) {
+                document.getElementById('stepCorrectionConfig').style.display = 'block';
+                // 自动读取并处理数据文件
+                setTimeout(() => loadDataFileForCorrection(file), 100);
+            }
             if (boxNum === 3) document.getElementById('timeInputGroup3').style.display = 'block';
+        }
+
+        // 加载数据文件用于台阶修正（仅第二个框）
+        async function loadDataFileForCorrection(file) {
+            try {
+                const rawExcelData = await readExcelRaw(file);
+                if (!rawExcelData || rawExcelData.data.length === 0) throw new Error('数据文件为空');
+                
+                // 保存原始数据用于后续处理
+                extractedData.dataFileRaw = rawExcelData.data;
+                extractedData.dataFileCorrected = null; // 重置修正后的数据
+                
+                document.getElementById('status2').textContent = '✓ 已加载，可应用台阶修正';
+            } catch (error) {
+                console.error('加载数据文件失败:', error);
+                document.getElementById('status2').textContent = '✗ 加载失败';
+            }
         }
 
         function getFileIcon(filename) {
@@ -186,6 +260,14 @@
             document.getElementById(`fileList${boxNum}`).innerHTML = '';
             document.getElementById(`file${boxNum}`).value = '';
 
+            if (boxNum === 2) {
+                document.getElementById('stepCorrectionConfig').style.display = 'none';
+                extractedData.dataFileRaw = null;
+                extractedData.dataFileCorrected = null;
+                const statusDiv = document.getElementById('correctionStatus');
+                statusDiv.style.display = 'none';
+                statusDiv.className = 'correction-status';
+            }
             if (boxNum === 3) {
                 document.getElementById('timeInputGroup3').style.display = 'none';
                 document.getElementById('startTime3').value = '';
@@ -424,9 +506,17 @@
         }
 
         async function processDataFile(file) {
-            const rawExcelData = await readExcelRaw(file);
-            if (!rawExcelData || rawExcelData.data.length === 0) throw new Error('数据文件为空');
-            const headers = rawExcelData.data[0];
+            // 如果已经应用了台阶修正，使用修正后的数据
+            let dataToUse;
+            if (extractedData.dataFileCorrected) {
+                dataToUse = { data: extractedData.dataFileCorrected };
+            } else {
+                const rawExcelData = await readExcelRaw(file);
+                if (!rawExcelData || rawExcelData.data.length === 0) throw new Error('数据文件为空');
+                dataToUse = rawExcelData;
+            }
+            
+            const headers = dataToUse.data[0];
             let timeColIndex = 0, x1ColIndex = -1, x2ColIndex = -1, y1ColIndex = -1, y2ColIndex = -1, zColIndex = -1, voltageColIndex = -1;
             const tempColIndices = [];
 
@@ -439,8 +529,8 @@
                 else if (colLower === 'z') zColIndex = i;
                 else if (colLower.includes('volt') || colLower.includes('电压')) voltageColIndex = i;
                 else if (colLower.includes('untitled')) {
-                    if (rawExcelData.data.length > 1) {
-                        const sampleValue = parseFloat(rawExcelData.data[1][i]);
+                    if (dataToUse.data.length > 1) {
+                        const sampleValue = parseFloat(dataToUse.data[1][i]);
                         if (!isNaN(sampleValue) && sampleValue >= 5 && sampleValue <= 40) {
                             tempColIndices.push({ index: i, header: headers[i] });
                         } else if (!isNaN(sampleValue) && sampleValue >= 0 && sampleValue <= 1 && voltageColIndex < 0) {
@@ -452,8 +542,361 @@
             extractedData.tempVoltage = {
                 headers: headers, timeColIndex: timeColIndex, x1ColIndex: x1ColIndex, x2ColIndex: x2ColIndex,
                 y1ColIndex: y1ColIndex, y2ColIndex: y2ColIndex, zColIndex: zColIndex,
-                tempColIndices: tempColIndices, voltageColIndex: voltageColIndex, rawData: rawExcelData.data
+                tempColIndices: tempColIndices, voltageColIndex: voltageColIndex, rawData: dataToUse.data
             };
+        }
+
+        // ==================== 第二框：台阶修正算法 ====================
+        
+        // 应用台阶修正
+        async function applyStepCorrection() {
+            if (!extractedData.dataFileRaw) {
+                showCorrectionStatus('请先上传数据文件', 'error');
+                return;
+            }
+
+            const params = {
+                windowSize: parseInt(document.getElementById('windowSize').value) || 10,
+                kSigma: parseFloat(document.getElementById('kSigma').value) || 5,
+                minSegmentLength: parseInt(document.getElementById('minSegmentLength').value) || 5,
+                expandLeft: parseInt(document.getElementById('expandLeft').value) || 15,
+                expandRight: parseInt(document.getElementById('expandRight').value) || 15,
+                smoothMargin: parseInt(document.getElementById('smoothMargin').value) || 10,
+                enableSmoothing: document.getElementById('enableSmoothing').checked
+            };
+
+            showCorrectionStatus('正在处理...', 'loading');
+
+            try {
+                const rawData = extractedData.dataFileRaw;
+                const headers = rawData[0];
+                
+                // 识别传感器列（x1, x2, y1, y2, z）
+                const sensorCols = [];
+                for (let i = 0; i < headers.length; i++) {
+                    const colLower = String(headers[i]).toLowerCase().trim();
+                    if (['x1', 'x2', 'y1', 'y2', 'z'].includes(colLower)) {
+                        sensorCols.push({ index: i, name: colLower });
+                    }
+                }
+
+                if (sensorCols.length === 0) {
+                    showCorrectionStatus('未找到传感器列 (x1, x2, y1, y2, z)', 'error');
+                    return;
+                }
+
+                // 深拷贝数据用于修正
+                const correctedData = rawData.map(row => [...row]);
+                const jumpSegments = {}; // 记录每个传感器检测到的跳变区间
+
+                // 对每个传感器列进行台阶修正
+                for (const sensor of sensorCols) {
+                    const colIdx = sensor.index;
+                    const values = rawData.slice(1).map(row => parseFloat(row[colIdx]) || 0);
+                    
+                    // 执行台阶修正
+                    const result = correctStepJump(values, params);
+                    
+                    // 更新修正后的数据
+                    for (let i = 0; i < result.corrected.length; i++) {
+                        correctedData[i + 1][colIdx] = result.corrected[i];
+                    }
+                    
+                    jumpSegments[sensor.name] = result.segments;
+                }
+
+                // 保存修正后的数据
+                extractedData.dataFileCorrected = correctedData;
+
+                // 生成对比图表
+                generateCorrectionCharts(rawData, correctedData, sensorCols, jumpSegments);
+
+                const totalJumps = Object.values(jumpSegments).reduce((sum, segs) => sum + segs.length, 0);
+                showCorrectionStatus(`✓ 修正完成！共检测到 ${totalJumps} 个跳变区间`, 'success');
+                document.getElementById('status2').textContent = '✓ 已应用台阶修正';
+
+            } catch (error) {
+                console.error('台阶修正失败:', error);
+                showCorrectionStatus('修正失败: ' + error.message, 'error');
+            }
+        }
+
+        // 重置台阶修正
+        function resetStepCorrection() {
+            extractedData.dataFileCorrected = null;
+            const chartDiv = document.getElementById('correctionChart');
+            if (chartDiv) chartDiv.remove();
+            showCorrectionStatus('已重置为原始数据', 'success');
+            document.getElementById('status2').textContent = '✓ 已加载，可应用台阶修正';
+        }
+
+        function showCorrectionStatus(message, type) {
+            const statusDiv = document.getElementById('correctionStatus');
+            statusDiv.textContent = message;
+            statusDiv.className = 'correction-status ' + type;
+        }
+
+        // 核心算法：台阶修正（MATLAB逻辑翻译）
+        function correctStepJump(y, params) {
+            const n = y.length;
+            const { windowSize, kSigma, minSegmentLength, expandLeft, expandRight, smoothMargin, enableSmoothing } = params;
+            
+            // 1. 计算斜率（线性回归斜率）
+            const slopes = new Array(n).fill(0);
+            const x = Array.from({ length: windowSize }, (_, i) => i + 1);
+            const xMean = x.reduce((a, b) => a + b, 0) / windowSize;
+            const xCentered = x.map(xi => xi - xMean);
+            const denom = xCentered.reduce((sum, xi) => sum + xi * xi, 0);
+            
+            for (let i = windowSize - 1; i < n; i++) {
+                const yWin = y.slice(i - windowSize + 1, i + 1);
+                const yMean = yWin.reduce((a, b) => a + b, 0) / windowSize;
+                const yCentered = yWin.map(yi => yi - yMean);
+                const numer = xCentered.reduce((sum, xi, idx) => sum + xi * yCentered[idx], 0);
+                slopes[i] = numer / denom;
+            }
+            
+            // 2. 计算斜率标准差和阈值
+            const validSlopes = slopes.slice(windowSize - 1);
+            const slopeMean = validSlopes.reduce((a, b) => a + b, 0) / validSlopes.length;
+            const slopeStd = Math.sqrt(validSlopes.reduce((sum, s) => sum + (s - slopeMean) ** 2, 0) / validSlopes.length);
+            const slopeThreshold = slopeStd * kSigma;
+            
+            // 3. 检测跳变点
+            const isJumpRaw = slopes.map(s => Math.abs(s) > slopeThreshold);
+            
+            // 4. 去噪：只保留连续超过minSegmentLength的跳变
+            const isJumpClean = new Array(n).fill(false);
+            let count = 0;
+            for (let i = 0; i < n; i++) {
+                if (isJumpRaw[i]) {
+                    count++;
+                } else {
+                    if (count >= minSegmentLength) {
+                        for (let j = i - count; j < i; j++) {
+                            isJumpClean[j] = true;
+                        }
+                    }
+                    count = 0;
+                }
+            }
+            // 处理末尾
+            if (count >= minSegmentLength) {
+                for (let j = n - count; j < n; j++) {
+                    isJumpClean[j] = true;
+                }
+            }
+            
+            // 5. 扩框
+            const isJumpExpanded = [...isJumpClean];
+            for (let i = 0; i < n; i++) {
+                if (isJumpClean[i]) {
+                    const start = Math.max(0, i - expandLeft);
+                    const end = Math.min(n - 1, i + expandRight);
+                    for (let j = start; j <= end; j++) {
+                        isJumpExpanded[j] = true;
+                    }
+                }
+            }
+            
+            // 6. 提取跳变区间
+            const segments = [];
+            let inJump = false;
+            let segStart = 0;
+            for (let i = 0; i < n; i++) {
+                if (isJumpExpanded[i] && !inJump) {
+                    inJump = true;
+                    segStart = i;
+                } else if (!isJumpExpanded[i] && inJump) {
+                    inJump = false;
+                    segments.push({ start: segStart, end: i - 1 });
+                }
+            }
+            if (inJump) {
+                segments.push({ start: segStart, end: n - 1 });
+            }
+            
+            // 7. 后切法修正
+            let yCorr = [...y];
+            for (const seg of segments) {
+                const s = seg.start;
+                const e = seg.end;
+                
+                // 边界检查
+                if (s < smoothMargin || e + smoothMargin >= n) continue;
+                
+                // 计算跳变前后的均值
+                let sumBefore = 0, sumAfter = 0;
+                for (let i = s - smoothMargin; i < s; i++) {
+                    sumBefore += yCorr[i];
+                }
+                for (let i = e + 1; i <= e + smoothMargin; i++) {
+                    sumAfter += yCorr[i];
+                }
+                const levelBefore = sumBefore / smoothMargin;
+                const levelAfter = sumAfter / smoothMargin;
+                const delta = levelAfter - levelBefore;
+                
+                // 修正：后面的数据整体平移
+                for (let i = e; i < n; i++) {
+                    yCorr[i] -= delta;
+                }
+            }
+            
+            // 8. 美化：线性插值平滑跳变区间
+            if (enableSmoothing) {
+                for (const seg of segments) {
+                    const s = seg.start;
+                    const e = seg.end;
+                    if (s < 1 || e >= n - 1) continue;
+                    
+                    const yStart = yCorr[s - 1];
+                    const yEnd = yCorr[e + 1];
+                    const steps = e - s + 1;
+                    
+                    for (let i = 0; i < steps; i++) {
+                        const t = (i + 1) / (steps + 1);
+                        yCorr[s + i] = yStart + (yEnd - yStart) * t;
+                    }
+                }
+            }
+            
+            return { corrected: yCorr, segments: segments };
+        }
+
+        // 生成修正对比图表
+        function generateCorrectionCharts(rawData, correctedData, sensorCols, jumpSegments) {
+            // 移除旧图表
+            const oldChart = document.getElementById('correctionChart');
+            if (oldChart) oldChart.remove();
+
+            const chartDiv = document.createElement('div');
+            chartDiv.id = 'correctionChart';
+            chartDiv.className = 'correction-chart';
+            
+            const timeCol = rawData[0].map((h, i) => ({ h, i })).find(c => 
+                String(c.h).toLowerCase().includes('time') || 
+                String(c.h).toLowerCase().includes('时间')
+            );
+            const timeValues = timeCol ? rawData.slice(1).map(row => row[timeCol.i]) : 
+                Array.from({ length: rawData.length - 1 }, (_, i) => i + 1);
+
+            let chartsHtml = '<h4 style="margin-bottom:15px;color:#333;">📊 台阶修正对比图</h4>';
+            
+            sensorCols.forEach((sensor, idx) => {
+                const colIdx = sensor.index;
+                const rawValues = rawData.slice(1).map(row => parseFloat(row[colIdx]) || 0);
+                const correctedValues = correctedData.slice(1).map(row => parseFloat(row[colIdx]) || 0);
+                const segments = jumpSegments[sensor.name] || [];
+                
+                const canvasId = `chart-${sensor.name}`;
+                chartsHtml += `
+                    <div style="margin-bottom:20px;">
+                        <h5 style="margin-bottom:10px;color:#666;">传感器 ${sensor.name.toUpperCase()} (${segments.length}个跳变)</h5>
+                        <canvas id="${canvasId}" height="200"></canvas>
+                    </div>
+                `;
+                
+                // 延迟渲染图表
+                setTimeout(() => {
+                    renderCorrectionChart(canvasId, timeValues, rawValues, correctedValues, segments);
+                }, idx * 100);
+            });
+            
+            chartDiv.innerHTML = chartsHtml;
+            document.getElementById('stepCorrectionConfig').appendChild(chartDiv);
+        }
+
+        // 渲染单个修正对比图表
+        function renderCorrectionChart(canvasId, timeValues, rawValues, correctedValues, segments) {
+            const ctx = document.getElementById(canvasId);
+            if (!ctx) return;
+            
+            // 限制显示点数，避免性能问题
+            const maxPoints = 5000;
+            let step = 1;
+            if (timeValues.length > maxPoints) {
+                step = Math.ceil(timeValues.length / maxPoints);
+            }
+            
+            const sampledTime = [];
+            const sampledRaw = [];
+            const sampledCorrected = [];
+            
+            for (let i = 0; i < timeValues.length; i += step) {
+                sampledTime.push(timeValues[i]);
+                sampledRaw.push(rawValues[i]);
+                sampledCorrected.push(correctedValues[i]);
+            }
+            
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: sampledTime,
+                    datasets: [
+                        {
+                            label: '原始数据',
+                            data: sampledRaw,
+                            borderColor: 'rgba(52, 152, 219, 0.6)',
+                            backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                            borderWidth: 1,
+                            pointRadius: 0,
+                            tension: 0.1
+                        },
+                        {
+                            label: '修正后',
+                            data: sampledCorrected,
+                            borderColor: 'rgba(231, 76, 60, 0.8)',
+                            backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false
+                    },
+                    plugins: {
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        annotation: {
+                            annotations: segments.map((seg, idx) => ({
+                                type: 'box',
+                                xMin: seg.start,
+                                xMax: seg.end,
+                                backgroundColor: 'rgba(255, 0, 0, 0.1)',
+                                borderWidth: 0
+                            }))
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: '时间'
+                            },
+                            ticks: {
+                                maxTicksLimit: 10
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: '位移'
+                            }
+                        }
+                    }
+                }
+            });
         }
 
         // ==================== 第三框：机床工况数据处理 ====================
