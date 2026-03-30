@@ -9,6 +9,7 @@
     <title>传感器数据处理工具 v3</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; min-height: 100vh; padding: 20px; }
@@ -125,6 +126,39 @@
                 <div class="panel-section disabled" id="panel5">
                     <h3>步骤5: 导出结果</h3>
                     <button class="btn btn-success" onclick="downloadResults()">下载处理后的数据</button>
+                </div>
+                
+                <!-- 新增：工况数据合并与OSS上传 -->
+                <div class="panel-section disabled" id="panelMachine">
+                    <h3>步骤6: 上传工况数据并合并</h3>
+                    <div class="upload-area" onclick="document.getElementById('machineFileInput').click()">
+                        <div style="font-size:2rem;margin-bottom:10px;">⚙️</div>
+                        <div>点击上传工况数据Excel</div>
+                        <div id="machineFileName" style="color:#4caf50;margin-top:10px;"></div>
+                    </div>
+                    <input type="file" id="machineFileInput" accept=".xlsx,.xls" style="display:none" onchange="handleMachineFile(event)">
+                    <div id="machineConfig" style="display:none;margin-top:15px;">
+                        <div class="input-group">
+                            <label>开始记录时间</label>
+                            <input type="text" id="machineStartTime" placeholder="2025/03/23 08:30:00">
+                        </div>
+                        <div class="input-group">
+                            <label>采集时间间隔（秒）</label>
+                            <input type="number" id="machineInterval" value="1" min="0.1" step="0.1">
+                        </div>
+                        <button class="btn btn-primary" onclick="mergeWithMachineData()">合并数据</button>
+                    </div>
+                </div>
+                
+                <div class="panel-section disabled" id="panelOSS">
+                    <h3>步骤7: 上传到阿里云OSS</h3>
+                    <div class="input-group"><label>Bucket名称</label><input type="text" id="ossBucket" placeholder="your-bucket-name"></div>
+                    <div class="input-group"><label>Endpoint</label><input type="text" id="ossEndpoint" placeholder="oss-cn-hangzhou.aliyuncs.com"></div>
+                    <div class="input-group"><label>AccessKey ID</label><input type="text" id="ossAccessKeyId"></div>
+                    <div class="input-group"><label>AccessKey Secret</label><input type="password" id="ossAccessKeySecret"></div>
+                    <div class="input-group"><label>存储路径</label><input type="text" id="ossPath" value="data/"></div>
+                    <button class="btn btn-success" onclick="uploadToOSS()">📤 上传到OSS</button>
+                    <div id="ossStatus" style="margin-top:10px;padding:10px;border-radius:4px;display:none;"></div>
                 </div>
             </div>
             <div class="right-panel" id="chartsArea">
@@ -615,6 +649,146 @@
             XLSX.utils.book_append_sheet(wb, ws, '处理结果');
             XLSX.writeFile(wb, '传感器数据处理结果.xlsx');
             showStatus('下载完成', 'success');
+            
+            // 保存数据供后续合并使用
+            appData.processedData = wsData;
+            
+            // 显示工况数据上传面板
+            document.getElementById('panelMachine').classList.remove('disabled');
+            document.getElementById('panelMachine').classList.add('active');
+        }
+        
+        // ==================== 工况数据合并功能 ====================
+        let machineRawData = null;
+        let mergedWorkbook = null;
+        
+        async function handleMachineFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            document.getElementById('machineFileName').textContent = file.name;
+            showStatus('读取工况数据...', 'info');
+            try {
+                const data = await file.arrayBuffer();
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                machineRawData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                document.getElementById('machineConfig').style.display = 'block';
+                showStatus('工况数据已加载', 'success');
+            } catch (err) { showStatus('读取失败: ' + err.message, 'error'); }
+        }
+        
+        function mergeWithMachineData() {
+            if (!appData.processedData || !machineRawData) {
+                showStatus('请先完成传感器处理并上传工况数据', 'error');
+                return;
+            }
+            
+            const startTimeStr = document.getElementById('machineStartTime').value;
+            const interval = parseFloat(document.getElementById('machineInterval').value) || 1;
+            if (!startTimeStr) { showStatus('请输入开始时间', 'error'); return; }
+            
+            const startDate = new Date(startTimeStr);
+            if (isNaN(startDate)) { showStatus('时间格式错误', 'error'); return; }
+            
+            // 处理工况数据：按时间间隔分组并计算均值
+            const machineRows = machineRawData.slice(1);
+            const groups = new Map();
+            
+            for (const row of machineRows) {
+                const second = parseFloat(row[0]);
+                if (isNaN(second)) continue;
+                const idx = Math.floor(second / interval);
+                if (!groups.has(idx)) groups.set(idx, []);
+                groups.get(idx).push(row);
+            }
+            
+            // 计算每组的均值
+            const resampled = [];
+            const sortedIdx = Array.from(groups.keys()).sort((a, b) => a - b);
+            for (const idx of sortedIdx) {
+                const rows = groups.get(idx);
+                const time = new Date(startDate.getTime() + idx * interval * 1000);
+                const means = [formatDate(time)];
+                for (let col = 1; col <= 6; col++) {
+                    let sum = 0, cnt = 0;
+                    for (const r of rows) {
+                        const v = parseFloat(r[col]);
+                        if (!isNaN(v)) { sum += v; cnt++; }
+                    }
+                    means.push(cnt > 0 ? sum / cnt : 0);
+                }
+                resampled.push(means);
+            }
+            
+            // 合并数据
+            const pHeaders = appData.processedData[0];
+            const mHeaders = ['工况时间', '工况1', '工况2', '工况3', '工况4', '工况5', '工况6'];
+            const merged = [[...mHeaders, ...pHeaders]];
+            
+            const minLen = Math.min(resampled.length, appData.processedData.length - 1);
+            for (let i = 0; i < minLen; i++) {
+                merged.push([...resampled[i], ...appData.processedData[i + 1]]);
+            }
+            
+            // 创建工作簿
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(merged);
+            XLSX.utils.book_append_sheet(wb, ws, '合并数据');
+            mergedWorkbook = wb;
+            
+            // 下载
+            XLSX.writeFile(wb, '合并数据_' + new Date().toISOString().split('T')[0] + '.xlsx');
+            showStatus('合并完成并已下载', 'success');
+            
+            // 显示OSS上传面板
+            document.getElementById('panelOSS').classList.remove('disabled');
+            document.getElementById('panelOSS').classList.add('active');
+        }
+        
+        async function uploadToOSS() {
+            if (!mergedWorkbook) { showStatus('请先合并数据', 'error'); return; }
+            
+            const bucket = document.getElementById('ossBucket').value.trim();
+            const endpoint = document.getElementById('ossEndpoint').value.trim();
+            const accessKeyId = document.getElementById('ossAccessKeyId').value.trim();
+            const accessKeySecret = document.getElementById('ossAccessKeySecret').value.trim();
+            const path = document.getElementById('ossPath').value.trim() || 'data/';
+            const statusDiv = document.getElementById('ossStatus');
+            
+            if (!bucket || !endpoint || !accessKeyId || !accessKeySecret) {
+                statusDiv.style.display = 'block';
+                statusDiv.style.background = '#f8d7da';
+                statusDiv.style.color = '#721c24';
+                statusDiv.textContent = '请填写完整的OSS配置';
+                return;
+            }
+            
+            const wbout = XLSX.write(mergedWorkbook, { bookType: 'xlsx', type: 'array' });
+            const blob = new Blob([wbout], { type: 'application/octet-stream' });
+            
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = '#fff3cd';
+            statusDiv.style.color = '#856404';
+            statusDiv.textContent = '正在上传...';
+            
+            try {
+                const client = new OSS({
+                    region: endpoint.replace('.aliyuncs.com', ''),
+                    accessKeyId: accessKeyId,
+                    accessKeySecret: accessKeySecret,
+                    bucket: bucket,
+                    secure: true
+                });
+                const filename = '合并数据_' + new Date().toISOString().split('T')[0] + '_' + Date.now() + '.xlsx';
+                const result = await client.put(path + filename, blob);
+                statusDiv.style.background = '#d4edda';
+                statusDiv.style.color = '#155724';
+                statusDiv.innerHTML = `✅ 上传成功！<br><a href="${result.url}" target="_blank">${result.url}</a>`;
+            } catch (error) {
+                statusDiv.style.background = '#f8d7da';
+                statusDiv.style.color = '#721c24';
+                statusDiv.textContent = '上传失败: ' + error.message;
+            }
         }
     </script>
 </body>
