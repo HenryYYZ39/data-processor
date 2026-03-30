@@ -29,11 +29,15 @@
         .sheet-item { padding: 12px; background: white; border: 2px solid #e0e0e0; border-radius: 8px; cursor: pointer; }
         .sheet-item:hover { border-color: #667eea; }
         .sheet-item.selected { border-color: #667eea; background: #667eea; color: white; }
-        .column-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; max-height: 200px; overflow-y: auto; }
-        .column-item { padding: 10px; background: white; border: 2px solid #e0e0e0; border-radius: 8px; cursor: pointer; text-align: center; font-size: 0.8rem; }
-        .column-item:hover { border-color: #667eea; }
-        .column-item.selected { border-color: #4caf50; background: #e8f5e9; }
-        .column-item input { display: none; }
+        .col-selection-container { display: flex; gap: 15px; }
+        .col-selection-box { flex: 1; }
+        .col-selection-box h4 { font-size: 0.85rem; margin-bottom: 10px; color: #555; }
+        .column-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 8px; padding: 8px; background: white; }
+        .column-item { padding: 10px 12px; background: #f8f9fa; border: 2px solid transparent; border-radius: 6px; cursor: pointer; font-size: 0.8rem; display: flex; align-items: center; gap: 8px; }
+        .column-item:hover { background: #e3f2fd; border-color: #667eea; }
+        .column-item.selected { background: #e8f5e9; border-color: #4caf50; }
+        .column-item input { margin: 0; }
+        .column-item label { cursor: pointer; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .input-group { margin-bottom: 12px; }
         .input-group label { display: block; color: #555; font-size: 0.85rem; margin-bottom: 5px; }
         .input-group input { width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; }
@@ -81,9 +85,17 @@
                 </div>
                 <div class="panel-section disabled" id="panel2">
                     <h3>步骤2: 选择数据列</h3>
-                    <div style="margin-bottom:10px;"><label style="color:#667eea;font-size:0.85rem;">传感器列（必选）:</label><div class="column-grid" id="sensorColList"></div></div>
-                    <div><label style="color:#666;font-size:0.85rem;">温度列（可选）:</label><div class="column-grid" id="tempColList"></div></div>
-                    <button class="btn btn-primary" onclick="confirmColumnSelection()">确认选择</button>
+                    <div class="col-selection-container">
+                        <div class="col-selection-box">
+                            <h4 style="color:#667eea;">📊 传感器列（必选）</h4>
+                            <div class="column-list" id="sensorColList"></div>
+                        </div>
+                        <div class="col-selection-box">
+                            <h4 style="color:#666;">🌡️ 温度列（可选）</h4>
+                            <div class="column-list" id="tempColList"></div>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="confirmColumnSelection()" style="margin-top:15px;">确认选择</button>
                 </div>
                 <div class="panel-section disabled" id="panel3">
                     <h3>步骤3: 标定系数</h3>
@@ -221,14 +233,16 @@
         }
 
         function showColumnSelection() {
-            const cols = appData.rawData[0].length;
+            const headers = appData.rawData[0];
+            const cols = headers.length;
             const sList = document.getElementById('sensorColList');
             const tList = document.getElementById('tempColList');
             sList.innerHTML = ''; tList.innerHTML = '';
             for (let i = 0; i < cols; i++) {
-                const name = `列${i + 1}`;
-                const sItem = createColItem(i, name, 'sensor');
-                const tItem = createColItem(i, name, 'temp');
+                const headerName = headers[i] || `列${i + 1}`;
+                const displayName = String(headerName).trim() || `列${i + 1}`;
+                const sItem = createColItem(i, displayName, 'sensor');
+                const tItem = createColItem(i, displayName, 'temp');
                 sList.appendChild(sItem);
                 tList.appendChild(tItem);
             }
@@ -237,7 +251,7 @@
         function createColItem(idx, name, type) {
             const div = document.createElement('div');
             div.className = 'column-item';
-            div.innerHTML = `<input type="checkbox" id="${type}_${idx}" value="${idx}" onchange="toggleCol(this,'${type}')"><label for="${type}_${idx}">${name}</label>`;
+            div.innerHTML = `<input type="checkbox" id="${type}_${idx}" value="${idx}" onchange="toggleCol(this,'${type}')"><label for="${type}_${idx}" title="${name}">${name}</label>`;
             div.onclick = (e) => { if (e.target.tagName !== 'INPUT') document.getElementById(`${type}_${idx}`).click(); };
             return div;
         }
