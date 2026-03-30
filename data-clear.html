@@ -311,8 +311,13 @@
         function processData() {
             showStatus('处理中...', 'info');
             const params = { windowSize: parseInt(document.getElementById('windowSize').value) || 10, kSigma: parseFloat(document.getElementById('kSigma').value) || 5, minSegmentLength: parseInt(document.getElementById('minSegmentLength').value) || 5, expandLeft: parseInt(document.getElementById('expandLeft').value) || 15, expandRight: parseInt(document.getElementById('expandRight').value) || 15, smoothMargin: parseInt(document.getElementById('smoothMargin').value) || 10, enableSmoothing: document.getElementById('enableSmoothing').checked };
+            
+            // 读取并格式化时间数据
             appData.timeData = [];
-            for (let r = 1; r < appData.rawData.length; r++) appData.timeData.push(appData.rawData[r][appData.timeColumn]);
+            for (let r = 1; r < appData.rawData.length; r++) {
+                const rawTime = appData.rawData[r][appData.timeColumn];
+                appData.timeData.push(formatTime(rawTime));
+            }
             appData.correctedData = [];
             appData.jumpSegments = {};
             for (let i = 0; i < appData.sensorColumns.length; i++) {
@@ -334,6 +339,58 @@
             showStatus('处理完成', 'success');
             activatePanel('panel5');
             updateStep(5);
+        }
+
+        // 格式化时间为 yyyy/m/d h:mm:ss
+        function formatTime(value) {
+            if (!value) return '';
+            
+            // 如果已经是字符串格式，尝试解析
+            if (typeof value === 'string') {
+                // 尝试解析各种格式
+                const date = new Date(value);
+                if (!isNaN(date.getTime())) {
+                    return formatDateToString(date);
+                }
+                // 如果是 Excel 序列号字符串
+                const num = parseFloat(value);
+                if (!isNaN(num) && num > 30000) {
+                    return formatExcelDate(num);
+                }
+                return value;
+            }
+            
+            // 如果是数字（Excel 日期序列号）
+            if (typeof value === 'number') {
+                if (value > 30000 && value < 50000) {
+                    return formatExcelDate(value);
+                }
+            }
+            
+            // 如果是 Date 对象
+            if (value instanceof Date) {
+                return formatDateToString(value);
+            }
+            
+            return String(value);
+        }
+        
+        // Excel 日期序列号转字符串
+        function formatExcelDate(excelDate) {
+            const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+            const date = new Date(excelEpoch.getTime() + excelDate * 24 * 60 * 60 * 1000);
+            return formatDateToString(date);
+        }
+        
+        // Date 对象转 yyyy/m/d h:mm:ss
+        function formatDateToString(date) {
+            const year = date.getFullYear();
+            const month = date.getMonth() + 1;
+            const day = date.getDate();
+            const hour = date.getHours();
+            const minute = date.getMinutes();
+            const second = date.getSeconds();
+            return `${year}/${month}/${day} ${hour}:${minute.toString().padStart(2, '0')}:${second.toString().padStart(2, '0')}`;
         }
 
         function correctStep(y, params) {
