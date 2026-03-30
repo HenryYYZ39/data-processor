@@ -180,11 +180,42 @@
         function selectSheet(name) {
             appData.selectedSheet = name;
             const ws = appData.workbook.Sheets[name];
-            const data = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+            
+            // 获取数据范围
+            const range = XLSX.utils.decode_range(ws['!ref']);
+            const numCols = range.e.c - range.s.c + 1;
+            const numRows = range.e.r - range.s.r + 1;
+            
+            console.log('Excel范围:', range, '列数:', numCols, '行数:', numRows);
+            
+            // 读取数据，确保列数正确
+            const data = [];
+            for (let r = range.s.r; r <= range.e.r; r++) {
+                const row = [];
+                for (let c = range.s.c; c <= range.e.c; c++) {
+                    const cellRef = XLSX.utils.encode_cell({ r: r, c: c });
+                    const cell = ws[cellRef];
+                    row.push(cell ? cell.v : null);
+                }
+                data.push(row);
+            }
+            
+            // 过滤空行
             appData.rawData = data.filter(row => row.some(c => c !== null && c !== ''));
+            
+            console.log('读取后列数:', appData.rawData[0]?.length, '行数:', appData.rawData.length);
+            
             if (appData.rawData.length < 2) { showStatus('数据为空', 'error'); return; }
-            appData.rawData = appData.rawData.filter((row, i) => i === 0 || row.every(c => c !== null && !isNaN(parseFloat(c))));
-            showStatus(`已加载: ${name}, ${appData.rawData.length - 1}行`, 'success');
+            
+            // 数据清洗：去除包含 NaN 的数据行（保留表头）
+            appData.rawData = appData.rawData.filter((row, i) => {
+                if (i === 0) return true;
+                return row.every(c => c !== null && !isNaN(parseFloat(c)));
+            });
+            
+            console.log('清洗后列数:', appData.rawData[0]?.length, '行数:', appData.rawData.length);
+            
+            showStatus(`已加载: ${name}, ${appData.rawData.length - 1}行, ${appData.rawData[0].length}列`, 'success');
             activatePanel('panel2');
             updateStep(2);
             showColumnSelection();
@@ -355,36 +386,85 @@
         }
 
         function showCharts() {
+            console.log('显示图表，传感器数量:', appData.sensorColumns.length);
+            console.log('时间数据长度:', appData.timeData?.length);
+            console.log('校准数据长度:', appData.calibratedData?.[0]?.length);
+            console.log('修正数据长度:', appData.correctedData?.[0]?.length);
+            
             const area = document.getElementById('chartsArea');
             area.innerHTML = '';
+            
+            if (appData.sensorColumns.length === 0) {
+                area.innerHTML = '<div style="text-align:center;padding:50px;">没有选择传感器列</div>';
+                return;
+            }
+            
             for (let i = 0; i < appData.sensorColumns.length; i++) {
                 const div = document.createElement('div');
                 div.className = 'chart-container';
-                div.innerHTML = `<h4>传感器 ${i + 1} (${appData.jumpSegments[i].length}个跳变)</h4><div style="height:250px;"><canvas id="chart_${i}"></canvas></div>`;
+                const jumpCount = appData.jumpSegments[i]?.length || 0;
+                div.innerHTML = `<h4>传感器 ${i + 1} (${jumpCount}个跳变)</h4><div style="height:250px;"><canvas id="chart_${i}"></canvas></div>`;
                 area.appendChild(div);
-                setTimeout(() => drawChart(i), i * 100);
             }
-            if (appData.tempColumns.length > 0) {
-                const div = document.createElement('div');
-                div.className = 'chart-container';
-                div.innerHTML = `<h4>温度数据</h4><div style="height:250px;"><canvas id="chart_temp"></canvas></div>`;
-                area.appendChild(div);
-                setTimeout(() => drawTempChart(), appData.sensorColumns.length * 100);
-            }
+            
+            // 延迟渲染图表，确保DOM已更新
+            setTimeout(() => {
+                for (let i = 0; i < appData.sensorColumns.length; i++) {
+                    drawChart(i);
+                }
+                if (appData.tempColumns.length > 0) {
+                    const div = document.createElement('div');
+                    div.className = 'chart-container';
+                    div.innerHTML = `<h4>温度数据</h4><div style="height:250px;"><canvas id="chart_temp"></canvas></div>`;
+                    area.appendChild(div);
+                    drawTempChart();
+                }
+            }, 100);
         }
 
         function drawChart(idx) {
             const ctx = document.getElementById(`chart_${idx}`);
-            if (!ctx) return;
+            if (!ctx) {
+                console.error('找不到canvas元素: chart_' + idx);
+                return;
+            }
+            
             const time = appData.timeData;
             const raw = appData.calibratedData[idx];
             const corr = appData.correctedData[idx];
-            const segs = appData.jumpSegments[idx];
-            new Chart(ctx, {
-                type: 'line',
-                data: { labels: time, datasets: [{ label: '原始', data: raw, borderColor: 'rgba(52,152,219,0.6)', pointRadius: 0 }, { label: '修正后', data: corr, borderColor: 'rgba(231,76,60,0.9)', pointRadius: 0 }] },
-                options: { responsive: true, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false } }
-            });
+            
+            console.log(`绘制图表 ${idx}: 时间长度=${time?.length}, 原始数据长度=${raw?.length}, 修正数据长度=${corr?.length}`);
+            
+            if (!time || !raw || !corr || time.length === 0 || raw.length === 0) {
+                console.error('数据为空，无法绘制图表');
+                return;
+            }
+            
+            // 确保数据长度一致
+            const minLen = Math.min(time.length, raw.length, corr.length);
+            const timeSlice = time.slice(0, minLen);
+            const rawSlice = raw.slice(0, minLen);
+            const corrSlice = corr.slice(0, minLen);
+            
+            try {
+                new Chart(ctx, {
+                    type: 'line',
+                    data: { 
+                        labels: timeSlice, 
+                        datasets: [
+                            { label: '原始', data: rawSlice, borderColor: 'rgba(52,152,219,0.6)', pointRadius: 0 }, 
+                            { label: '修正后', data: corrSlice, borderColor: 'rgba(231,76,60,0.9)', pointRadius: 0 }
+                        ] 
+                    },
+                    options: { 
+                        responsive: true, 
+                        maintainAspectRatio: false, 
+                        interaction: { mode: 'index', intersect: false }
+                    }
+                });
+            } catch (err) {
+                console.error('绘制图表失败:', err);
+            }
         }
 
         function drawTempChart() {
