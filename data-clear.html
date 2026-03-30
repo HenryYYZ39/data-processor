@@ -22,9 +22,9 @@
         .main-content { display: grid; grid-template-columns: 350px 1fr; gap: 30px; }
         @media (max-width: 1024px) { .main-content { grid-template-columns: 1fr; } }
         .left-panel { display: flex; flex-direction: column; gap: 20px; }
-        .panel-section { background: #f8f9fa; border-radius: 15px; padding: 20px; border: 2px solid transparent; }
+        .panel-section { background: white; border-radius: 15px; padding: 20px; border: 2px solid #e0e0e0; }
         .panel-section.active { border-color: #667eea; background: #f0f4ff; }
-        .panel-section.disabled { opacity: 0.5; pointer-events: none; }
+        .panel-section.disabled { opacity: 0.5; pointer-events: none; background: #f8f9fa; }
         .panel-section h3 { color: #333; margin-bottom: 15px; font-size: 1rem; }
         .upload-area { border: 2px dashed #ccc; border-radius: 12px; padding: 30px 20px; text-align: center; cursor: pointer; transition: all 0.3s; background: white; }
         .upload-area:hover { border-color: #667eea; background: #f0f4ff; }
