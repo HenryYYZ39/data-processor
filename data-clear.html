@@ -425,12 +425,23 @@
                 for (let i = 0; i < appData.sensorColumns.length; i++) {
                     drawChart(i);
                 }
+                // 温度数据分两张图：原始和滤波后
                 if (appData.tempColumns.length > 0) {
-                    const div = document.createElement('div');
-                    div.className = 'chart-container';
-                    div.innerHTML = `<h4>温度数据</h4><div style="height:250px;"><canvas id="chart_temp"></canvas></div>`;
-                    area.appendChild(div);
-                    drawTempChart();
+                    // 原始温度图
+                    const divRaw = document.createElement('div');
+                    divRaw.className = 'chart-container';
+                    divRaw.innerHTML = `<h4>温度数据 - 原始</h4><div style="height:250px;"><canvas id="chart_temp_raw"></canvas></div>`;
+                    area.appendChild(divRaw);
+                    drawTempChartRaw();
+                    
+                    // 滤波后温度图（如果进行了滤波）
+                    if (appData.tempWindowSize > 1) {
+                        const divFiltered = document.createElement('div');
+                        divFiltered.className = 'chart-container';
+                        divFiltered.innerHTML = `<h4>温度数据 - 滤波后 (窗口=${appData.tempWindowSize})</h4><div style="height:250px;"><canvas id="chart_temp_filtered"></canvas></div>`;
+                        area.appendChild(divFiltered);
+                        drawTempChartFiltered();
+                    }
                 }
             }, 100);
         }
@@ -480,28 +491,60 @@
             }
         }
 
-        function drawTempChart() {
-            const ctx = document.getElementById('chart_temp');
+        function drawTempChartRaw() {
+            const ctx = document.getElementById('chart_temp_raw');
             if (!ctx) return;
             const datasets = [];
             for (let i = 0; i < appData.tempColumns.length; i++) {
-                datasets.push({ label: `温度${i + 1} 原始`, data: appData.tempRawData[i], borderColor: `hsl(${i * 60},70%,50%)`, pointRadius: 0 });
-                if (appData.tempWindowSize > 1) datasets.push({ label: `温度${i + 1} 滤波`, data: appData.tempFilteredData[i], borderColor: `hsl(${i * 60},70%,30%)`, pointRadius: 0 });
+                datasets.push({ 
+                    label: `温度${i + 1}`, 
+                    data: appData.tempRawData[i], 
+                    borderColor: `hsl(${i * 60},70%,50%)`, 
+                    pointRadius: 0 
+                });
             }
-            new Chart(ctx, { type: 'line', data: { labels: appData.timeData, datasets: datasets }, options: { responsive: true, maintainAspectRatio: false } });
+            new Chart(ctx, { 
+                type: 'line', 
+                data: { labels: appData.timeData, datasets: datasets }, 
+                options: { responsive: true, maintainAspectRatio: false } 
+            });
+        }
+
+        function drawTempChartFiltered() {
+            const ctx = document.getElementById('chart_temp_filtered');
+            if (!ctx) return;
+            const datasets = [];
+            for (let i = 0; i < appData.tempColumns.length; i++) {
+                datasets.push({ 
+                    label: `温度${i + 1}`, 
+                    data: appData.tempFilteredData[i], 
+                    borderColor: `hsl(${i * 60},70%,50%)`, 
+                    pointRadius: 0 
+                });
+            }
+            new Chart(ctx, { 
+                type: 'line', 
+                data: { labels: appData.timeData, datasets: datasets }, 
+                options: { responsive: true, maintainAspectRatio: false } 
+            });
         }
 
         function downloadResults() {
             const wsData = [];
+            // 表头：时间 + 传感器修正值 + 温度
             const header = ['时间'];
-            appData.sensorColumns.forEach((c, i) => header.push(`传感器${i + 1}_原始`, `传感器${i + 1}_修正`));
+            appData.sensorColumns.forEach((c, i) => header.push(`传感器${i + 1}`));
             appData.tempColumns.forEach((c, i) => header.push(`温度${i + 1}`));
             wsData.push(header);
-            for (let r = 0; r < appData.timeData.length; r++) {
+
+            // 数据行：从第2行开始（跳过第1行数据），只包含修正后的传感器值和温度
+            for (let r = 1; r < appData.timeData.length; r++) {
                 const row = [appData.timeData[r]];
+                // 只添加修正后的传感器值（跳过原始值）
                 for (let i = 0; i < appData.sensorColumns.length; i++) {
-                    row.push(appData.calibratedData[i][r], appData.correctedData[i][r]);
+                    row.push(appData.correctedData[i][r]);
                 }
+                // 添加温度值
                 for (let i = 0; i < appData.tempColumns.length; i++) {
                     row.push(appData.tempFilteredData[i][r]);
                 }
