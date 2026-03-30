@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>传感器数据处理与工况合并工具</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; min-height: 100vh; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 20px; padding: 30px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #333; margin-bottom: 20px; font-size: 1.8rem; }
+        .page-nav { display: flex; justify-content: center; gap: 20px; margin-bottom: 30px; }
+        .page-nav button { padding: 12px 30px; border: none; border-radius: 25px; font-size: 1rem; cursor: pointer; transition: all 0.3s; }
+        .page-nav button.active { background: #667eea; color: white; }
+        .page-nav button:not(.active) { background: #f0f0f0; color: #666; }
+        .page-content { display: none; }
+        .page-content.active { display: block; }
+        .main-content { display: grid; grid-template-columns: 350px 1fr; gap: 30px; }
+        @media (max-width: 1024px) { .main-content { grid-template-columns: 1fr; } }
+        .left-panel { display: flex; flex-direction: column; gap: 20px; }
+        .panel-section { background: #f8f9fa; border-radius: 15px; padding: 20px; border: 2px solid transparent; }
+        .panel-section.active { border-color: #667eea; background: #f0f4ff; }
+        .panel-section.disabled { opacity: 0.5; pointer-events: none; }
+        .upload-area { border: 2px dashed #ccc; border-radius: 12px; padding: 30px 20px; text-align: center; cursor: pointer; transition: all 0.3s; background: white; }
+        .upload-area:hover { border-color: #667eea; background: #f0f4ff; }
+        .upload-area.has-file { border-color: #4caf50; background: #e8f5e9; }
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 10px; font-size: 0.95rem; cursor: pointer; margin-top: 10px; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-success { background: #4caf50; color: white; }
+        .btn-secondary { background: #f0f0f0; color: #666; }
+        .right-panel { background: #f8f9fa; border-radius: 15px; padding: 20px; min-height: 500px; }
+        .oss-config { margin-top: 20px; padding: 20px; background: #f5f5f5; border-radius: 8px; border: 1px solid #667eea; }
+        .oss-config .input-group { margin-bottom: 10px; }
+        .oss-config label { display: inline-block; width: 120px; color: #666; font-size: 0.9rem; }
+        .oss-config input { width: calc(100% - 130px); padding: 8px 12px; border: 1px solid #ddd; border-radius: 4px; }
+        .oss-btn { display: inline-block; padding: 12px 30px; background: #ff6b6b; color: white; border: none; border-radius: 25px; font-weight: 500; cursor: pointer; margin-top: 10px; }
+        .status-bar { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 12px 25px; border-radius: 25px; color: white; display: none; z-index: 1000; }
+        .status-bar.show { display: block; }
+        .status-bar.success { background: #4caf50; }
+        .status-bar.error { background: #f44336; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>传感器数据处理与工况合并工具</h1>
+        <div class="page-nav">
+            <button class="active" onclick="switchPage('page1')" id="navPage1">📊 传感器数据处理</button>
+            <button onclick="switchPage('page2')" id="navPage2">⚙️ 工况数据合并与上传</button>
+        </div>
+        
+        <div class="page-content active" id="page1">
+            <p style="text-align:center;color:#666;">第一页：传感器数据处理（使用现有 data-clear.html 的功能）</p>
+            <p style="text-align:center;margin-top:20px;"><button class="btn btn-primary" onclick="window.open('data-clear.html', '_blank')">打开传感器处理页面</button></p>
+        </div>
+        
+        <div class="page-content" id="page2">
+            <div class="main-content">
+                <div class="left-panel">
+                    <div class="panel-section active">
+                        <h3>步骤1: 上传传感器处理结果</h3>
+                        <div class="upload-area" onclick="document.getElementById('processedFile').click()">
+                            <div style="font-size:2rem;margin-bottom:10px;">📊</div>
+                            <div>点击上传处理结果</div>
+                            <div id="processedFileName" style="color:#4caf50;margin-top:10px;"></div>
+                        </div>
+                        <input type="file" id="processedFile" accept=".xlsx,.xls" style="display:none" onchange="handleProcessedFile(event)">
+                    </div>
+                    <div class="panel-section disabled" id="machinePanel">
+                        <h3>步骤2: 上传工况数据</h3>
+                        <div class="upload-area" onclick="document.getElementById('machineFile').click()">
+                            <div style="font-size:2rem;margin-bottom:10px;">⚙️</div>
+                            <div>点击上传工况数据</div>
+                            <div id="machineFileName" style="color:#4caf50;margin-top:10px;"></div>
+                        </div>
+                        <input type="file" id="machineFile" accept=".xlsx,.xls" style="display:none" onchange="handleMachineFile(event)">
+                        <div style="margin-top:15px;">
+                            <label>开始时间：</label>
+                            <input type="text" id="startTime" placeholder="2025/03/23 08:30:00" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                            <label style="margin-top:10px;display:block;">时间间隔（秒）：</label>
+                            <input type="number" id="interval" value="1" min="0.1" step="0.1" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                        </div>
+                    </div>
+                    <div class="panel-section disabled" id="mergePanel">
+                        <h3>步骤3: 合并与上传</h3>
+                        <button class="btn btn-primary" onclick="mergeData()">合并数据</button>
+                        <button class="btn btn-success" onclick="downloadMerged()" style="margin-top:10px;">下载合并结果</button>
+                        <div class="oss-config" style="margin-top:15px;">
+                            <h4>阿里云OSS配置</h4>
+                            <div class="input-group"><label>Bucket：</label><input type="text" id="ossBucket" placeholder="your-bucket"></div>
+                            <div class="input-group"><label>Endpoint：</label><input type="text" id="ossEndpoint" placeholder="oss-cn-hangzhou.aliyuncs.com"></div>
+                            <div class="input-group"><label>AccessKey ID：</label><input type="text" id="ossAccessKeyId"></div>
+                            <div class="input-group"><label>AccessKey Secret：</label><input type="password" id="ossAccessKeySecret"></div>
+                            <div class="input-group"><label>存储路径：</label><input type="text" id="ossPath" value="data/"></div>
+                            <button class="oss-btn" onclick="uploadToOSS()">📤 上传到OSS</button>
+                            <div class="oss-status" id="ossStatus"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="right-panel" id="previewArea">
+                    <div style="text-align:center;color:#999;padding:80px 20px;">
+                        <div style="font-size:3rem;margin-bottom:15px;">📋</div>
+                        <h3>数据预览</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="status-bar" id="statusBar"></div>
+
+    <script>
+        function switchPage(pageId) {
+            document.querySelectorAll('.page-content').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.page-nav button').forEach(b => b.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+            document.getElementById('nav' + pageId.charAt(0).toUpperCase() + pageId.slice(1)).classList.add('active');
+        }
+
+        function showStatus(msg, type) {
+            const bar = document.getElementById('statusBar');
+            bar.textContent = msg;
+            bar.className = 'status-bar ' + type + ' show';
+            setTimeout(() => bar.classList.remove('show'), 3000);
+        }
+
+        // 第二页功能
+        let processedData = null;
+        let machineData = null;
+        let mergedWorkbook = null;
+
+        async function handleProcessedFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            document.getElementById('processedFileName').textContent = file.name;
+            showStatus('读取处理结果...', 'info');
+            try {
+                const data = await file.arrayBuffer();
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                processedData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                showStatus('处理结果已加载', 'success');
+                document.getElementById('machinePanel').classList.remove('disabled');
+                document.getElementById('machinePanel').classList.add('active');
+            } catch (err) { showStatus('读取失败', 'error'); }
+        }
+
+        async function handleMachineFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            document.getElementById('machineFileName').textContent = file.name;
+            showStatus('读取工况数据...', 'info');
+            try {
+                const data = await file.arrayBuffer();
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                machineData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                showStatus('工况数据已加载', 'success');
+                document.getElementById('mergePanel').classList.remove('disabled');
+                document.getElementById('mergePanel').classList.add('active');
+            } catch (err) { showStatus('读取失败', 'error'); }
+        }
+
+        function mergeData() {
+            if (!processedData || !machineData) { showStatus('请先上传两个文件', 'error'); return; }
+            const startTimeStr = document.getElementById('startTime').value;
+            const interval = parseFloat(document.getElementById('interval').value) || 1;
+            if (!startTimeStr) { showStatus('请输入开始时间', 'error'); return; }
+            
+            // 处理工况数据：1秒重采样
+            const startDate = new Date(startTimeStr);
+            const machineRows = machineData.slice(1); // 跳过表头
+            const resampled = [];
+            
+            for (let i = 0; i < machineRows.length; i++) {
+                const second = parseFloat(machineRows[i][0]);
+                if (isNaN(second)) continue;
+                const time = new Date(startDate.getTime() + second * 1000);
+                const timeStr = formatDate(time);
+                const row = [timeStr];
+                for (let j = 1; j <= 6 && j < machineRows[i].length; j++) {
+                    row.push(machineRows[i][j]);
+                }
+                resampled.push(row);
+            }
+            
+            // 合并数据
+            const merged = [];
+            const pHeaders = processedData[0];
+            const mHeaders = ['时间', '工况1', '工况2', '工况3', '工况4', '工况5', '工况6'];
+            merged.push([...mHeaders, ...pHeaders]);
+            
+            const minLen = Math.min(resampled.length, processedData.length - 1);
+            for (let i = 0; i < minLen; i++) {
+                merged.push([...resampled[i], ...processedData[i + 1]]);
+            }
+            
+            // 创建工作簿
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(merged);
+            XLSX.utils.book_append_sheet(wb, ws, '合并数据');
+            mergedWorkbook = wb;
+            
+            // 显示预览
+            const preview = document.getElementById('previewArea');
+            let html = '<table style="width:100%;border-collapse:collapse;font-size:0.85rem;"><thead><tr>';
+            merged[0].forEach(h => html += `<th style="border:1px solid #ddd;padding:8px;background:#f5f5f5;">${h}</th>`);
+            html += '</tr></thead><tbody>';
+            for (let i = 1; i <= Math.min(10, merged.length - 1); i++) {
+                html += '<tr>';
+                merged[i].forEach(c => html += `<td style="border:1px solid #ddd;padding:8px;">${c}</td>`);
+                html += '</tr>';
+            }
+            if (merged.length > 11) html += `<tr><td colspan="${merged[0].length}" style="text-align:center;padding:8px;color:#999;">... 还有 ${merged.length - 11} 行 ...</td></tr>`;
+            html += '</tbody></table>';
+            preview.innerHTML = html;
+            
+            showStatus('合并完成', 'success');
+        }
+
+        function formatDate(date) {
+            return `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`;
+        }
+
+        function downloadMerged() {
+            if (!mergedWorkbook) { showStatus('请先合并数据', 'error'); return; }
+            XLSX.writeFile(mergedWorkbook, '合并数据_' + new Date().toISOString().split('T')[0] + '.xlsx');
+            showStatus('下载完成', 'success');
+        }
+
+        async function uploadToOSS() {
+            if (!mergedWorkbook) { showStatus('请先合并数据', 'error'); return; }
+            const bucket = document.getElementById('ossBucket').value.trim();
+            const endpoint = document.getElementById('ossEndpoint').value.trim();
+            const accessKeyId = document.getElementById('ossAccessKeyId').value.trim();
+            const accessKeySecret = document.getElementById('ossAccessKeySecret').value.trim();
+            const path = document.getElementById('ossPath').value.trim() || 'data/';
+            const statusDiv = document.getElementById('ossStatus');
+            
+            if (!bucket || !endpoint || !accessKeyId || !accessKeySecret) {
+                statusDiv.className = 'oss-status error'; statusDiv.textContent = '请填写完整的OSS配置'; statusDiv.style.display = 'block'; return;
+            }
+            
+            const wbout = XLSX.write(mergedWorkbook, { bookType: 'xlsx', type: 'array' });
+            const blob = new Blob([wbout], { type: 'application/octet-stream' });
+            
+            statusDiv.className = 'oss-status loading'; statusDiv.textContent = '正在上传...'; statusDiv.style.display = 'block';
+            
+            try {
+                const client = new OSS({ region: endpoint.replace('.aliyuncs.com', ''), accessKeyId, accessKeySecret, bucket, secure: true });
+                const filename = '合并数据_' + new Date().toISOString().split('T')[0] + '_' + Date.now() + '.xlsx';
+                const result = await client.put(path + filename, blob);
+                statusDiv.className = 'oss-status success'; statusDiv.innerHTML = `✅ 上传成功！<br><a href="${result.url}" target="_blank">${result.url}</a>`;
+            } catch (error) {
+                statusDiv.className = 'oss-status error'; statusDiv.textContent = '上传失败: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>
