@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>传感器数据处理工具 v13</title>
+    <title>传感器数据处理工具 v14</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
@@ -559,6 +559,29 @@
             }, 100);
         }
 
+        // 数据采样函数：大数据量时均匀采样
+        function sampleDataForChart(timeData, rawData, corrData, maxPoints = 5000) {
+            const totalPoints = timeData.length;
+            if (totalPoints <= maxPoints) {
+                return { time: timeData, raw: rawData, corr: corrData };
+            }
+            
+            // 计算采样步长
+            const step = Math.ceil(totalPoints / maxPoints);
+            const sampledTime = [];
+            const sampledRaw = [];
+            const sampledCorr = [];
+            
+            for (let i = 0; i < totalPoints; i += step) {
+                sampledTime.push(timeData[i]);
+                sampledRaw.push(rawData[i]);
+                sampledCorr.push(corrData[i]);
+            }
+            
+            console.log(`数据采样: ${totalPoints} -> ${sampledTime.length} 点`);
+            return { time: sampledTime, raw: sampledRaw, corr: sampledCorr };
+        }
+
         function drawChart(idx) {
             const ctx = document.getElementById(`chart_${idx}`);
             if (!ctx) {
@@ -583,20 +606,30 @@
             const rawSlice = raw.slice(0, minLen);
             const corrSlice = corr.slice(0, minLen);
             
+            // 大数据量时进行采样
+            const sampled = sampleDataForChart(timeSlice, rawSlice, corrSlice);
+            
             try {
                 new Chart(ctx, {
                     type: 'line',
                     data: { 
-                        labels: timeSlice, 
+                        labels: sampled.time, 
                         datasets: [
-                            { label: '原始', data: rawSlice, borderColor: 'rgba(52,152,219,0.6)', pointRadius: 0 }, 
-                            { label: '修正后', data: corrSlice, borderColor: 'rgba(231,76,60,0.9)', pointRadius: 0 }
+                            { label: '原始', data: sampled.raw, borderColor: 'rgba(52,152,219,0.6)', pointRadius: 0 }, 
+                            { label: '修正后', data: sampled.corr, borderColor: 'rgba(231,76,60,0.9)', pointRadius: 0 }
                         ] 
                     },
                     options: { 
                         responsive: true, 
                         maintainAspectRatio: false, 
-                        interaction: { mode: 'index', intersect: false }
+                        interaction: { mode: 'index', intersect: false },
+                        animation: false, // 禁用动画提升性能
+                        elements: {
+                            line: {
+                                tension: 0, // 禁用贝塞尔曲线
+                                borderWidth: 1
+                            }
+                        }
                     }
                 });
             } catch (err) {
@@ -604,41 +637,80 @@
             }
         }
 
+        // 温度数据采样
+        function sampleTempData(tempDataArray, timeData, maxPoints = 5000) {
+            const totalPoints = timeData.length;
+            if (totalPoints <= maxPoints) {
+                return { time: timeData, data: tempDataArray };
+            }
+            
+            const step = Math.ceil(totalPoints / maxPoints);
+            const sampledTime = [];
+            const sampledData = tempDataArray.map(() => []);
+            
+            for (let i = 0; i < totalPoints; i += step) {
+                sampledTime.push(timeData[i]);
+                for (let j = 0; j < tempDataArray.length; j++) {
+                    sampledData[j].push(tempDataArray[j][i]);
+                }
+            }
+            
+            return { time: sampledTime, data: sampledData };
+        }
+
         function drawTempChartRaw() {
             const ctx = document.getElementById('chart_temp_raw');
             if (!ctx) return;
+            
+            // 采样温度数据
+            const sampled = sampleTempData(appData.tempRawData, appData.timeData);
+            
             const datasets = [];
             for (let i = 0; i < appData.tempColumns.length; i++) {
                 datasets.push({ 
                     label: `温度${i + 1}`, 
-                    data: appData.tempRawData[i], 
+                    data: sampled.data[i], 
                     borderColor: `hsl(${i * 60},70%,50%)`, 
                     pointRadius: 0 
                 });
             }
             new Chart(ctx, { 
                 type: 'line', 
-                data: { labels: appData.timeData, datasets: datasets }, 
-                options: { responsive: true, maintainAspectRatio: false } 
+                data: { labels: sampled.time, datasets: datasets }, 
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    animation: false,
+                    elements: { line: { tension: 0, borderWidth: 1 } }
+                } 
             });
         }
 
         function drawTempChartFiltered() {
             const ctx = document.getElementById('chart_temp_filtered');
             if (!ctx) return;
+            
+            // 采样温度数据
+            const sampled = sampleTempData(appData.tempFilteredData, appData.timeData);
+            
             const datasets = [];
             for (let i = 0; i < appData.tempColumns.length; i++) {
                 datasets.push({ 
                     label: `温度${i + 1}`, 
-                    data: appData.tempFilteredData[i], 
+                    data: sampled.data[i], 
                     borderColor: `hsl(${i * 60},70%,50%)`, 
                     pointRadius: 0 
                 });
             }
             new Chart(ctx, { 
                 type: 'line', 
-                data: { labels: appData.timeData, datasets: datasets }, 
-                options: { responsive: true, maintainAspectRatio: false } 
+                data: { labels: sampled.time, datasets: datasets }, 
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    animation: false,
+                    elements: { line: { tension: 0, borderWidth: 1 } }
+                } 
             });
         }
 
