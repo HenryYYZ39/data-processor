@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>传感器数据处理工具 v10</title>
+    <title>传感器数据处理工具 v11</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
@@ -727,8 +727,10 @@
             progressText.textContent = '正在处理工况数据...';
             progressBar.style.width = '10%';
             
-            // 保存原始表头（第2-7列，即索引1-6）
-            machineOriginalHeaders = machineRawData[0].slice(1, 7);
+            // 保存原始表头（第2列及以后，即索引1起）
+            const rawHeaders = machineRawData[0];
+            machineOriginalHeaders = rawHeaders.slice(1); // 从第2列开始的所有列
+            const dataColCount = machineOriginalHeaders.length; // 数据列数（可能是6、12或更多）
             
             const dataRows = machineRawData.slice(1);
             const intervalGroups = new Map();
@@ -764,8 +766,8 @@
                 const rows = intervalGroups.get(intervalIndex);
                 const means = [intervalIndex * interval]; // 第0列是起始秒数
                 
-                // 计算第2-7列的均值（索引1-6）
-                for (let col = 1; col <= 6; col++) {
+                // 计算所有数据列的均值（动态列数）
+                for (let col = 1; col <= dataColCount; col++) {
                     let sum = 0, count = 0;
                     for (const row of rows) {
                         const val = parseFloat(row[col]);
@@ -777,7 +779,7 @@
                 // 计算实际时间
                 const actualTime = new Date(startDate.getTime() + intervalIndex * interval * 1000);
                 const timeStr = formatMachineDateTime(actualTime);
-                means.push(timeStr); // 第8列是格式化后的时间字符串
+                means.push(timeStr); // 最后一列是格式化后的时间字符串
                 
                 resampled.push(means);
                 
@@ -795,8 +797,9 @@
             const headers = ['时间', ...machineOriginalHeaders];
             processedMachineData = [headers];
             for (const row of resampled) {
-                const dataRow = [row[7]]; // 时间字符串
-                for (let i = 1; i <= 6; i++) {
+                const dataRow = [row[row.length - 1]]; // 时间字符串（最后一列）
+                // 添加所有数据列（第1到dataColCount列）
+                for (let i = 1; i <= dataColCount; i++) {
                     dataRow.push(row[i]);
                 }
                 processedMachineData.push(dataRow);
@@ -894,21 +897,25 @@
             const sensorHeaders = processedData[0];
             const sensorRows = processedData.slice(1);
             
-            // 工况数据：machineResampledData 中第7列是格式化后的时间字符串，第1-6列是数据
-            // 构建工况数据的时间索引 Map<时间字符串, [工况1-6]>
+            // 工况数据：machineResampledData 中最后一列是格式化后的时间字符串，第1到dataColCount列是数据
+            const dataColCount = machineOriginalHeaders.length;
+            // 构建工况数据的时间索引 Map<时间字符串, [工况数据数组]>
             const machineDataByTime = new Map();
             for (const row of machineResampledData) {
-                const timeStr = row[7]; // 格式化后的时间
-                const data = row.slice(1, 7); // 6列工况数据
+                const timeStr = row[row.length - 1]; // 最后一列是格式化后的时间
+                const data = row.slice(1, 1 + dataColCount); // 所有数据列
                 machineDataByTime.set(timeStr, data);
             }
             
             progressText.textContent = '正在按时间匹配合并...';
             progressBar.style.width = '50%';
             
-            // 构建合并后的表头：时间 + 工况1-6（原始表头）+ 传感器列（除时间外）
+            // 构建合并后的表头：时间 + 工况数据列（原始表头）+ 传感器列（除时间外）
             const mergedHeaders = [sensorHeaders[0], ...machineOriginalHeaders, ...sensorHeaders.slice(1)];
             const merged = [mergedHeaders];
+            
+            // 创建空值数组（用于未匹配的情况）
+            const emptyMachineData = new Array(dataColCount).fill('');
             
             // 按传感器数据行数遍历，每行匹配对应的工况数据
             const totalRows = sensorRows.length;
@@ -925,7 +932,7 @@
                     merged.push([sensorTime, ...machineData, ...sensorData]);
                 } else {
                     // 未找到匹配：时间 + 空值 + 传感器数据
-                    merged.push([sensorTime, '', '', '', '', '', '', ...sensorData]);
+                    merged.push([sensorTime, ...emptyMachineData, ...sensorData]);
                 }
                 
                 // 每1000行更新进度
