@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>传感器数据处理工具 v7</title>
+    <title>传感器数据处理工具 v8</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
@@ -153,7 +153,14 @@
                             </div>
                             <div id="mergeProgressText" style="text-align:center;color:#666;font-size:0.85rem;margin-top:5px;">准备中...</div>
                         </div>
-                        <button class="btn btn-primary" onclick="mergeWithMachineData()">合并数据</button>
+                        <!-- 按钮1：处理工况数据 -->
+                        <button class="btn btn-primary" id="btnProcessMachine" onclick="processMachineData()">处理工况数据</button>
+                        <!-- 按钮2：下载工况数据（处理完成后显示） -->
+                        <button class="btn btn-success" id="btnDownloadMachine" onclick="downloadMachineData()" style="display:none;margin-top:10px;">下载工况数据</button>
+                        <!-- 按钮3：合并数据（处理完成后显示） -->
+                        <button class="btn btn-primary" id="btnMerge" onclick="mergeWithMachineData()" style="display:none;margin-top:10px;background:#ff6b6b;">合并数据</button>
+                        <!-- 按钮4：下载合并文件（合并完成后显示） -->
+                        <button class="btn btn-success" id="btnDownloadMerged" onclick="downloadMergedData()" style="display:none;margin-top:10px;">下载合并文件</button>
                     </div>
                 </div>
                 
@@ -672,6 +679,7 @@
         
         // ==================== 工况数据合并功能 ====================
         let machineRawData = null;
+        let processedMachineData = null;
         let mergedWorkbook = null;
         
         async function handleMachineFile(e) {
@@ -689,7 +697,8 @@
             } catch (err) { showStatus('读取失败: ' + err.message, 'error'); }
         }
         
-        async function mergeWithMachineData() {
+        // 步骤6-1：处理工况数据
+        async function processMachineData() {
             if (!machineRawData) {
                 showStatus('请先上传工况数据', 'error');
                 return;
@@ -702,6 +711,10 @@
             const startDate = new Date(startTimeStr);
             if (isNaN(startDate)) { showStatus('时间格式错误', 'error'); return; }
             
+            // 禁用处理按钮，防止重复点击
+            document.getElementById('btnProcessMachine').disabled = true;
+            document.getElementById('btnProcessMachine').textContent = '处理中...';
+            
             // 显示进度条
             const progressDiv = document.getElementById('mergeProgress');
             const progressBar = document.getElementById('mergeProgressBar');
@@ -712,12 +725,11 @@
             const machineRows = machineRawData.slice(1);
             const groups = new Map();
             const totalRows = machineRows.length;
-            const batchSize = 5000; // 每批处理5000行
+            const batchSize = 5000;
             
             progressText.textContent = `正在分组处理... (0/${totalRows})`;
             progressBar.style.width = '10%';
             
-            // 分批处理分组
             for (let i = 0; i < totalRows; i += batchSize) {
                 const end = Math.min(i + batchSize, totalRows);
                 for (let j = i; j < end; j++) {
@@ -728,9 +740,8 @@
                     if (!groups.has(idx)) groups.set(idx, []);
                     groups.get(idx).push(row);
                 }
-                // 更新进度并让出主线程
                 progressText.textContent = `正在分组处理... (${end}/${totalRows})`;
-                progressBar.style.width = `${10 + (end / totalRows) * 30}%`;
+                progressBar.style.width = `${10 + (end / totalRows) * 40}%`;
                 await new Promise(r => setTimeout(r, 0));
             }
             
@@ -740,9 +751,8 @@
             const totalGroups = sortedIdx.length;
             
             progressText.textContent = `正在计算均值... (0/${totalGroups})`;
-            progressBar.style.width = '40%';
+            progressBar.style.width = '50%';
             
-            // 分批处理均值计算
             for (let i = 0; i < totalGroups; i += 1000) {
                 const end = Math.min(i + 1000, totalGroups);
                 for (let j = i; j < end; j++) {
@@ -760,33 +770,77 @@
                     }
                     resampled.push(means);
                 }
-                // 更新进度并让出主线程
                 progressText.textContent = `正在计算均值... (${end}/${totalGroups})`;
-                progressBar.style.width = `${40 + (end / totalGroups) * 30}%`;
+                progressBar.style.width = `${50 + (end / totalGroups) * 40}%`;
                 await new Promise(r => setTimeout(r, 0));
             }
             
-            progressText.textContent = '正在合并数据...';
-            progressBar.style.width = '80%';
+            // 保存处理后的工况数据
+            const mHeaders = ['工况时间', '工况1', '工况2', '工况3', '工况4', '工况5', '工况6'];
+            processedMachineData = [mHeaders, ...resampled];
             
-            // 获取传感器处理结果（如果没有下载过，重新生成）
+            progressText.textContent = '处理完成！';
+            progressBar.style.width = '100%';
+            showStatus('工况数据处理完成', 'success');
+            
+            // 显示下载工况数据按钮和合并按钮
+            document.getElementById('btnDownloadMachine').style.display = 'block';
+            document.getElementById('btnMerge').style.display = 'block';
+            document.getElementById('btnProcessMachine').textContent = '重新处理';
+            document.getElementById('btnProcessMachine').disabled = false;
+        }
+        
+        // 步骤6-2：下载工况数据
+        function downloadMachineData() {
+            if (!processedMachineData) {
+                showStatus('请先处理工况数据', 'error');
+                return;
+            }
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(processedMachineData);
+            XLSX.utils.book_append_sheet(wb, ws, '工况数据');
+            XLSX.writeFile(wb, '工况数据_' + new Date().toISOString().split('T')[0] + '.xlsx');
+            showStatus('工况数据下载完成', 'success');
+        }
+        
+        // 步骤6-3：合并数据
+        async function mergeWithMachineData() {
+            if (!processedMachineData) {
+                showStatus('请先处理工况数据', 'error');
+                return;
+            }
+            
+            // 禁用合并按钮
+            document.getElementById('btnMerge').disabled = true;
+            document.getElementById('btnMerge').textContent = '合并中...';
+            
+            const progressDiv = document.getElementById('mergeProgress');
+            const progressBar = document.getElementById('mergeProgressBar');
+            const progressText = document.getElementById('mergeProgressText');
+            progressDiv.style.display = 'block';
+            progressText.textContent = '正在合并数据...';
+            progressBar.style.width = '30%';
+            
+            // 获取传感器处理结果
             let processedData = appData.processedData;
             if (!processedData) {
                 processedData = generateProcessedData();
             }
             
+            progressBar.style.width = '60%';
+            
             // 合并数据
             const pHeaders = processedData[0];
-            const mHeaders = ['工况时间', '工况1', '工况2', '工况3', '工况4', '工况5', '工况6'];
+            const mHeaders = processedMachineData[0];
             const merged = [[...mHeaders, ...pHeaders]];
             
-            const minLen = Math.min(resampled.length, processedData.length - 1);
+            const minLen = Math.min(processedMachineData.length - 1, processedData.length - 1);
             for (let i = 0; i < minLen; i++) {
-                merged.push([...resampled[i], ...processedData[i + 1]]);
+                merged.push([...processedMachineData[i + 1], ...processedData[i + 1]]);
             }
             
             progressText.textContent = '正在生成文件...';
-            progressBar.style.width = '95%';
+            progressBar.style.width = '90%';
             
             // 创建工作簿
             const wb = XLSX.utils.book_new();
@@ -794,18 +848,24 @@
             XLSX.utils.book_append_sheet(wb, ws, '合并数据');
             mergedWorkbook = wb;
             
-            // 下载
-            XLSX.writeFile(wb, '合并数据_' + new Date().toISOString().split('T')[0] + '.xlsx');
-            
-            progressText.textContent = '完成！';
+            progressText.textContent = '合并完成！';
             progressBar.style.width = '100%';
-            showStatus('合并完成并已下载', 'success');
+            showStatus('合并完成', 'success');
             
-            // 3秒后隐藏进度条
-            setTimeout(() => {
-                progressDiv.style.display = 'none';
-                progressBar.style.width = '0%';
-            }, 3000);
+            // 显示下载合并文件按钮
+            document.getElementById('btnDownloadMerged').style.display = 'block';
+            document.getElementById('btnMerge').textContent = '重新合并';
+            document.getElementById('btnMerge').disabled = false;
+        }
+        
+        // 步骤6-4：下载合并文件
+        function downloadMergedData() {
+            if (!mergedWorkbook) {
+                showStatus('请先合并数据', 'error');
+                return;
+            }
+            XLSX.writeFile(mergedWorkbook, '合并数据_' + new Date().toISOString().split('T')[0] + '.xlsx');
+            showStatus('合并文件下载完成', 'success');
         }
         
         // 生成处理后的数据（用于合并时未下载的情况）
