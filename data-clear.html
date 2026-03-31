@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>传感器数据处理工具 v14</title>
+    <title>传感器数据处理工具 v15</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
@@ -206,7 +206,14 @@
         }
 
         function activatePanel(id) {
-            document.querySelectorAll('.panel-section').forEach(p => { p.classList.remove('active'); p.classList.add('disabled'); });
+            // 只移除active状态，不添加disabled（步骤1-4始终保持可点击）
+            document.querySelectorAll('.panel-section').forEach(p => { 
+                p.classList.remove('active'); 
+                // 只给步骤5、6、7添加disabled，步骤1-4保持可点击
+                if (p.id === 'panel5' || p.id === 'panelMachine' || p.id === 'panelOSS') {
+                    p.classList.add('disabled');
+                }
+            });
             document.getElementById(id).classList.remove('disabled');
             document.getElementById(id).classList.add('active');
         }
@@ -390,6 +397,11 @@
                 const panel = document.getElementById(id);
                 panel.classList.remove('disabled');
                 panel.classList.add('active');
+            });
+            // 步骤1-4保持可点击（不移除active状态，只是不移除它们）
+            ['panel1', 'panelSheet', 'panel2', 'panel3', 'panel4'].forEach(id => {
+                const panel = document.getElementById(id);
+                if (panel) panel.classList.remove('disabled');
             });
             updateStep(5);
         }
