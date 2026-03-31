@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>传感器数据处理工具 v9</title>
+    <title>传感器数据处理工具 v10</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
@@ -866,9 +866,9 @@
             showStatus('工况数据下载完成', 'success');
         }
         
-        // 步骤6-3：合并数据
+        // 步骤6-3：合并数据（按时间匹配，工况列插入到时间列后）
         async function mergeWithMachineData() {
-            if (!processedMachineData) {
+            if (!processedMachineData || !machineResampledData) {
                 showStatus('请先处理工况数据', 'error');
                 return;
             }
@@ -881,8 +881,8 @@
             const progressBar = document.getElementById('mergeProgressBar');
             const progressText = document.getElementById('mergeProgressText');
             progressDiv.style.display = 'block';
-            progressText.textContent = '正在合并数据...';
-            progressBar.style.width = '30%';
+            progressText.textContent = '正在构建时间索引...';
+            progressBar.style.width = '20%';
             
             // 获取传感器处理结果
             let processedData = appData.processedData;
@@ -890,16 +890,50 @@
                 processedData = generateProcessedData();
             }
             
-            progressBar.style.width = '60%';
+            // 传感器数据：第0列是时间
+            const sensorHeaders = processedData[0];
+            const sensorRows = processedData.slice(1);
             
-            // 合并数据
-            const pHeaders = processedData[0];
-            const mHeaders = processedMachineData[0];
-            const merged = [[...mHeaders, ...pHeaders]];
+            // 工况数据：machineResampledData 中第7列是格式化后的时间字符串，第1-6列是数据
+            // 构建工况数据的时间索引 Map<时间字符串, [工况1-6]>
+            const machineDataByTime = new Map();
+            for (const row of machineResampledData) {
+                const timeStr = row[7]; // 格式化后的时间
+                const data = row.slice(1, 7); // 6列工况数据
+                machineDataByTime.set(timeStr, data);
+            }
             
-            const minLen = Math.min(processedMachineData.length - 1, processedData.length - 1);
-            for (let i = 0; i < minLen; i++) {
-                merged.push([...processedMachineData[i + 1], ...processedData[i + 1]]);
+            progressText.textContent = '正在按时间匹配合并...';
+            progressBar.style.width = '50%';
+            
+            // 构建合并后的表头：时间 + 工况1-6（原始表头）+ 传感器列（除时间外）
+            const mergedHeaders = [sensorHeaders[0], ...machineOriginalHeaders, ...sensorHeaders.slice(1)];
+            const merged = [mergedHeaders];
+            
+            // 按传感器数据行数遍历，每行匹配对应的工况数据
+            const totalRows = sensorRows.length;
+            for (let i = 0; i < totalRows; i++) {
+                const sensorRow = sensorRows[i];
+                const sensorTime = sensorRow[0]; // 传感器时间
+                const sensorData = sensorRow.slice(1); // 传感器其他数据
+                
+                // 查找对应时间的工况数据
+                const machineData = machineDataByTime.get(sensorTime);
+                
+                if (machineData) {
+                    // 找到匹配：时间 + 工况数据 + 传感器数据
+                    merged.push([sensorTime, ...machineData, ...sensorData]);
+                } else {
+                    // 未找到匹配：时间 + 空值 + 传感器数据
+                    merged.push([sensorTime, '', '', '', '', '', '', ...sensorData]);
+                }
+                
+                // 每1000行更新进度
+                if (i % 1000 === 0) {
+                    progressText.textContent = `正在合并... (${i}/${totalRows})`;
+                    progressBar.style.width = `${50 + (i / totalRows) * 40}%`;
+                    await new Promise(r => setTimeout(r, 0));
+                }
             }
             
             progressText.textContent = '正在生成文件...';
