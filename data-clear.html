@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>传感器数据处理工具 v11</title>
+    <title>传感器数据处理工具 v12</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
@@ -793,12 +793,13 @@
             
             machineResampledData = resampled;
             
-            // 保存处理后的工况数据（使用原始表头）
+            // 保存处理后的工况数据（使用原始表头，从第2列开始，即跳过秒数列）
+            // 注意：machineOriginalHeaders 已经是从原始数据第2列开始的
             const headers = ['时间', ...machineOriginalHeaders];
             processedMachineData = [headers];
             for (const row of resampled) {
                 const dataRow = [row[row.length - 1]]; // 时间字符串（最后一列）
-                // 添加所有数据列（第1到dataColCount列）
+                // 添加所有数据列（第1到dataColCount列，对应原始数据的第2列起）
                 for (let i = 1; i <= dataColCount; i++) {
                     dataRow.push(row[i]);
                 }
