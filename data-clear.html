@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>传感器数据处理工具 v6</title>
+    <title>传感器数据处理工具 v7</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
@@ -708,41 +708,62 @@
             const progressText = document.getElementById('mergeProgressText');
             progressDiv.style.display = 'block';
             
-            // 处理工况数据：按时间间隔分组并计算均值
+            // 处理工况数据：按时间间隔分组并计算均值（分批处理避免卡死）
             const machineRows = machineRawData.slice(1);
             const groups = new Map();
+            const totalRows = machineRows.length;
+            const batchSize = 5000; // 每批处理5000行
             
-            progressText.textContent = '正在分组处理...';
-            progressBar.style.width = '30%';
+            progressText.textContent = `正在分组处理... (0/${totalRows})`;
+            progressBar.style.width = '10%';
             
-            for (const row of machineRows) {
-                const second = parseFloat(row[0]);
-                if (isNaN(second)) continue;
-                const idx = Math.floor(second / interval);
-                if (!groups.has(idx)) groups.set(idx, []);
-                groups.get(idx).push(row);
+            // 分批处理分组
+            for (let i = 0; i < totalRows; i += batchSize) {
+                const end = Math.min(i + batchSize, totalRows);
+                for (let j = i; j < end; j++) {
+                    const row = machineRows[j];
+                    const second = parseFloat(row[0]);
+                    if (isNaN(second)) continue;
+                    const idx = Math.floor(second / interval);
+                    if (!groups.has(idx)) groups.set(idx, []);
+                    groups.get(idx).push(row);
+                }
+                // 更新进度并让出主线程
+                progressText.textContent = `正在分组处理... (${end}/${totalRows})`;
+                progressBar.style.width = `${10 + (end / totalRows) * 30}%`;
+                await new Promise(r => setTimeout(r, 0));
             }
             
             // 计算每组的均值
             const resampled = [];
             const sortedIdx = Array.from(groups.keys()).sort((a, b) => a - b);
+            const totalGroups = sortedIdx.length;
             
-            progressText.textContent = '正在计算均值...';
-            progressBar.style.width = '60%';
+            progressText.textContent = `正在计算均值... (0/${totalGroups})`;
+            progressBar.style.width = '40%';
             
-            for (const idx of sortedIdx) {
-                const rows = groups.get(idx);
-                const time = new Date(startDate.getTime() + idx * interval * 1000);
-                const means = [formatDate(time)];
-                for (let col = 1; col <= 6; col++) {
-                    let sum = 0, cnt = 0;
-                    for (const r of rows) {
-                        const v = parseFloat(r[col]);
-                        if (!isNaN(v)) { sum += v; cnt++; }
+            // 分批处理均值计算
+            for (let i = 0; i < totalGroups; i += 1000) {
+                const end = Math.min(i + 1000, totalGroups);
+                for (let j = i; j < end; j++) {
+                    const idx = sortedIdx[j];
+                    const rows = groups.get(idx);
+                    const time = new Date(startDate.getTime() + idx * interval * 1000);
+                    const means = [formatDate(time)];
+                    for (let col = 1; col <= 6; col++) {
+                        let sum = 0, cnt = 0;
+                        for (const r of rows) {
+                            const v = parseFloat(r[col]);
+                            if (!isNaN(v)) { sum += v; cnt++; }
+                        }
+                        means.push(cnt > 0 ? sum / cnt : 0);
                     }
-                    means.push(cnt > 0 ? sum / cnt : 0);
+                    resampled.push(means);
                 }
-                resampled.push(means);
+                // 更新进度并让出主线程
+                progressText.textContent = `正在计算均值... (${end}/${totalGroups})`;
+                progressBar.style.width = `${40 + (end / totalGroups) * 30}%`;
+                await new Promise(r => setTimeout(r, 0));
             }
             
             progressText.textContent = '正在合并数据...';
