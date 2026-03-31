@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>传感器数据处理工具 v5</title>
+    <title>传感器数据处理工具 v6</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
@@ -124,12 +124,12 @@
                     <button class="btn btn-success" onclick="processData()">开始处理</button>
                 </div>
                 <!-- 步骤5、6、7 常亮显示，无先后顺序 -->
-                <div class="panel-section" id="panel5">
+                <div class="panel-section disabled" id="panel5">
                     <h3>步骤5: 导出结果（可选）</h3>
                     <button class="btn btn-success" onclick="downloadResults()">下载处理后的数据</button>
                 </div>
                 
-                <div class="panel-section" id="panelMachine">
+                <div class="panel-section disabled" id="panelMachine">
                     <h3>步骤6: 上传工况数据并合并</h3>
                     <div class="upload-area" onclick="document.getElementById('machineFileInput').click()">
                         <div style="font-size:2rem;margin-bottom:10px;">⚙️</div>
@@ -157,7 +157,7 @@
                     </div>
                 </div>
                 
-                <div class="panel-section" id="panelOSS">
+                <div class="panel-section disabled" id="panelOSS">
                     <h3>步骤7: 上传到阿里云OSS</h3>
                     <div class="input-group"><label>Bucket名称</label><input type="text" id="ossBucket" placeholder="your-bucket-name"></div>
                     <div class="input-group"><label>Endpoint</label><input type="text" id="ossEndpoint" placeholder="oss-cn-hangzhou.aliyuncs.com"></div>
@@ -379,9 +379,11 @@
             showCharts();
             showStatus('处理完成', 'success');
             // 步骤5、6、7 同时激活，无先后顺序
-            document.getElementById('panel5').classList.add('active');
-            document.getElementById('panelMachine').classList.add('active');
-            document.getElementById('panelOSS').classList.add('active');
+            ['panel5', 'panelMachine', 'panelOSS'].forEach(id => {
+                const panel = document.getElementById(id);
+                panel.classList.remove('disabled');
+                panel.classList.add('active');
+            });
             updateStep(5);
         }
 
