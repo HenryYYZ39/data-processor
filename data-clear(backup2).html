@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>传感器数据处理工具 v13</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; min-height: 100vh; padding: 20px; }
+        .container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 20px; padding: 30px; box-shadow: 0 10px 40px rgba(0,0,0,0.1); }
+        h1 { text-align: center; color: #333; margin-bottom: 30px; font-size: 1.8rem; }
+        .step-indicator { display: flex; justify-content: center; margin-bottom: 30px; flex-wrap: wrap; gap: 10px; }
+        .step-item { display: flex; align-items: center; padding: 10px 20px; background: #f0f0f0; border-radius: 25px; font-size: 0.85rem; color: #666; }
+        .step-item.active { background: #667eea; color: white; }
+        .step-item.completed { background: #4caf50; color: white; }
+        .main-content { display: grid; grid-template-columns: 350px 1fr; gap: 30px; }
+        @media (max-width: 1024px) { .main-content { grid-template-columns: 1fr; } }
+        .left-panel { display: flex; flex-direction: column; gap: 20px; }
+        .panel-section { background: white; border-radius: 15px; padding: 20px; border: 2px solid #e0e0e0; }
+        .panel-section.active { border-color: #667eea; background: #f0f4ff; }
+        .panel-section.disabled { opacity: 0.5; pointer-events: none; background: #f8f9fa; }
+        .panel-section h3 { color: #333; margin-bottom: 15px; font-size: 1rem; }
+        .upload-area { border: 2px dashed #ccc; border-radius: 12px; padding: 30px 20px; text-align: center; cursor: pointer; transition: all 0.3s; background: white; }
+        .upload-area:hover { border-color: #667eea; background: #f0f4ff; }
+        .upload-area.has-file { border-color: #4caf50; background: #e8f5e9; }
+        .sheet-list { display: flex; flex-direction: column; gap: 8px; }
+        .sheet-item { padding: 12px; background: white; border: 2px solid #e0e0e0; border-radius: 8px; cursor: pointer; }
+        .sheet-item:hover { border-color: #667eea; }
+        .sheet-item.selected { border-color: #667eea; background: #667eea; color: white; }
+        .col-selection-container { display: flex; gap: 15px; }
+        .col-selection-box { flex: 1; }
+        .col-selection-box h4 { font-size: 0.85rem; margin-bottom: 10px; color: #555; }
+        .column-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; border: 1px solid #e0e0e0; border-radius: 8px; padding: 8px; background: white; }
+        .column-item { padding: 10px 12px; background: #f8f9fa; border: 2px solid transparent; border-radius: 6px; cursor: pointer; font-size: 0.8rem; display: flex; align-items: center; gap: 8px; }
+        .column-item:hover { background: #e3f2fd; border-color: #667eea; }
+        .column-item.selected { background: #e8f5e9; border-color: #4caf50; }
+        .column-item input { margin: 0; }
+        .column-item label { cursor: pointer; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .input-group { margin-bottom: 12px; }
+        .input-group label { display: block; color: #555; font-size: 0.85rem; margin-bottom: 5px; }
+        .input-group input { width: 100%; padding: 10px; border: 2px solid #e0e0e0; border-radius: 8px; }
+        .btn { width: 100%; padding: 12px; border: none; border-radius: 10px; font-size: 0.95rem; cursor: pointer; margin-top: 10px; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-success { background: #4caf50; color: white; }
+        .right-panel { background: #f8f9fa; border-radius: 15px; padding: 20px; min-height: 500px; }
+        .chart-container { background: white; border-radius: 12px; padding: 15px; margin-bottom: 15px; }
+        .chart-container h4 { color: #333; margin-bottom: 10px; font-size: 0.9rem; }
+        .params-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        .param-item { background: white; padding: 10px; border-radius: 8px; }
+        .param-item label { display: block; color: #666; font-size: 0.8rem; margin-bottom: 3px; }
+        .param-item input { width: 100%; padding: 6px; border: 1px solid #ddd; border-radius: 4px; }
+        .status-bar { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); padding: 12px 25px; border-radius: 25px; color: white; display: none; z-index: 1000; }
+        .status-bar.show { display: block; }
+        .status-bar.success { background: #4caf50; }
+        .status-bar.error { background: #f44336; }
+        .status-bar.info { background: #2196f3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>传感器数据处理工具</h1>
+        <div class="step-indicator">
+            <div class="step-item active" id="step1"><span>1.选择文件</span></div>
+            <div class="step-item" id="step2"><span>2.选择列</span></div>
+            <div class="step-item" id="step3"><span>3.参数设置</span></div>
+            <div class="step-item" id="step4"><span>4.处理数据</span></div>
+            <div class="step-item" id="step5"><span>5.导出结果</span></div>
+        </div>
+        <div class="main-content">
+            <div class="left-panel">
+                <div class="panel-section active" id="panel1">
+                    <h3>步骤1: 选择Excel文件</h3>
+                    <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                        <div style="font-size:2rem;margin-bottom:10px;">📊</div>
+                        <div>点击上传Excel文件</div>
+                        <div id="fileNameDisplay" style="color:#4caf50;margin-top:10px;"></div>
+                    </div>
+                    <input type="file" id="fileInput" accept=".xlsx,.xls" style="display:none" onchange="handleFileUpload(event)">
+                </div>
+                <div class="panel-section disabled" id="panelSheet">
+                    <h3>选择工作表</h3>
+                    <div class="sheet-list" id="sheetList"></div>
+                </div>
+                <div class="panel-section disabled" id="panel2">
+                    <h3>步骤2: 选择数据列</h3>
+                    <div class="col-selection-container">
+                        <div class="col-selection-box">
+                            <h4 style="color:#667eea;">📊 传感器列（必选）</h4>
+                            <div class="column-list" id="sensorColList"></div>
+                        </div>
+                        <div class="col-selection-box">
+                            <h4 style="color:#666;">🌡️ 温度列（可选）</h4>
+                            <div class="column-list" id="tempColList"></div>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" onclick="confirmColumnSelection()" style="margin-top:15px;">确认选择</button>
+                </div>
+                <div class="panel-section disabled" id="panel3">
+                    <h3>步骤3: 标定系数</h3>
+                    <div id="calibrationInputs"></div>
+                    <div id="tempFilterGroup" style="display:none;margin-top:10px;">
+                        <label style="font-size:0.85rem;">温度滤波窗口:</label>
+                        <input type="number" id="tempWindowSize" value="10" min="1" style="width:100%;padding:8px;border:2px solid #e0e0e0;border-radius:8px;">
+                    </div>
+                    <button class="btn btn-primary" onclick="applyCalibration()">应用标定</button>
+                </div>
+                <div class="panel-section disabled" id="panel4">
+                    <h3>步骤4: 台阶修正参数</h3>
+                    <div class="params-grid">
+                        <div class="param-item"><label>斜率窗口</label><input type="number" id="windowSize" value="10" min="3"></div>
+                        <div class="param-item"><label>阈值倍数</label><input type="number" id="kSigma" value="5" min="1" step="0.5"></div>
+                        <div class="param-item"><label>最小跳变长度</label><input type="number" id="minSegmentLength" value="5" min="1"></div>
+                        <div class="param-item"><label>左扩展</label><input type="number" id="expandLeft" value="15" min="0"></div>
+                        <div class="param-item"><label>右扩展</label><input type="number" id="expandRight" value="15" min="0"></div>
+                        <div class="param-item"><label>平滑边界</label><input type="number" id="smoothMargin" value="10" min="1"></div>
+                    </div>
+                    <label style="display:flex;align-items:center;gap:8px;margin:10px 0;font-size:0.85rem;"><input type="checkbox" id="enableSmoothing" checked>启用平滑</label>
+                    <button class="btn btn-success" onclick="processData()">开始处理</button>
+                </div>
+                <!-- 步骤5、6、7 常亮显示，无先后顺序 -->
+                <div class="panel-section disabled" id="panel5">
+                    <h3>步骤5: 导出结果（可选）</h3>
+                    <button class="btn btn-success" onclick="downloadResults()">下载处理后的数据</button>
+                </div>
+                
+                <div class="panel-section disabled" id="panelMachine">
+                    <h3>步骤6: 上传工况数据并合并</h3>
+                    <div class="upload-area" onclick="document.getElementById('machineFileInput').click()">
+                        <div style="font-size:2rem;margin-bottom:10px;">⚙️</div>
+                        <div>点击上传工况数据Excel</div>
+                        <div id="machineFileName" style="color:#4caf50;margin-top:10px;"></div>
+                    </div>
+                    <input type="file" id="machineFileInput" accept=".xlsx,.xls" style="display:none" onchange="handleMachineFile(event)">
+                    <div id="machineConfig" style="display:none;margin-top:15px;">
+                        <div class="input-group">
+                            <label>开始记录时间</label>
+                            <input type="text" id="machineStartTime" placeholder="2025/03/23 08:30:00">
+                        </div>
+                        <div class="input-group">
+                            <label>采集时间间隔（秒）</label>
+                            <input type="number" id="machineInterval" value="1" min="0.1" step="0.1">
+                        </div>
+                        <!-- 进度条 -->
+                        <div id="mergeProgress" style="display:none;margin:15px 0;">
+                            <div style="height:8px;background:#e0e0e0;border-radius:4px;overflow:hidden;">
+                                <div id="mergeProgressBar" style="height:100%;background:#667eea;width:0%;transition:width 0.3s;"></div>
+                            </div>
+                            <div id="mergeProgressText" style="text-align:center;color:#666;font-size:0.85rem;margin-top:5px;">准备中...</div>
+                        </div>
+                        <!-- 按钮1：处理工况数据 -->
+                        <button class="btn btn-primary" id="btnProcessMachine" onclick="processMachineData()">处理工况数据</button>
+                        <!-- 按钮2：下载工况数据（处理完成后显示） -->
+                        <button class="btn btn-success" id="btnDownloadMachine" onclick="downloadMachineData()" style="display:none;margin-top:10px;">下载工况数据</button>
+                        <!-- 按钮3：合并数据（处理完成后显示） -->
+                        <button class="btn btn-primary" id="btnMerge" onclick="mergeWithMachineData()" style="display:none;margin-top:10px;background:#ff6b6b;">合并数据</button>
+                        <!-- 按钮4：下载合并文件（合并完成后显示） -->
+                        <button class="btn btn-success" id="btnDownloadMerged" onclick="downloadMergedData()" style="display:none;margin-top:10px;">下载合并文件</button>
+                    </div>
+                </div>
+                
+                <div class="panel-section disabled" id="panelOSS">
+                    <h3>步骤7: 上传到阿里云OSS</h3>
+                    <div class="input-group"><label>Bucket名称</label><input type="text" id="ossBucket" placeholder="your-bucket-name"></div>
+                    <div class="input-group"><label>Endpoint</label><input type="text" id="ossEndpoint" placeholder="oss-cn-hangzhou.aliyuncs.com"></div>
+                    <div class="input-group"><label>AccessKey ID</label><input type="text" id="ossAccessKeyId"></div>
+                    <div class="input-group"><label>AccessKey Secret</label><input type="password" id="ossAccessKeySecret"></div>
+                    <div class="input-group"><label>存储路径</label><input type="text" id="ossPath" value="data/"></div>
+                    <button class="btn btn-success" onclick="uploadToOSS()">📤 上传到OSS</button>
+                    <div id="ossStatus" style="margin-top:10px;padding:10px;border-radius:4px;display:none;"></div>
+                </div>
+            </div>
+            <div class="right-panel" id="chartsArea">
+                <div style="text-align:center;color:#999;padding:80px 20px;">
+                    <div style="font-size:3rem;margin-bottom:15px;">📈</div>
+                    <h3>图表将在这里显示</h3>
+                    <p style="font-size:0.9rem;">请按左侧步骤完成数据处理</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="status-bar" id="statusBar"></div>
+
+    <script>
+        const appData = { file: null, workbook: null, selectedSheet: null, rawData: null, timeColumn: 0, sensorColumns: [], tempColumns: [], calibrationFactors: [], tempWindowSize: 1, calibratedData: null, correctedData: null, tempFilteredData: null, jumpSegments: {}, timeData: null };
+
+        function showStatus(msg, type) {
+            const bar = document.getElementById('statusBar');
+            bar.textContent = msg;
+            bar.className = 'status-bar ' + type + ' show';
+            setTimeout(() => bar.classList.remove('show'), 3000);
+        }
+
+        function updateStep(step) {
+            for (let i = 1; i <= 5; i++) {
+                const el = document.getElementById('step' + i);
+                el.classList.remove('active', 'completed');
+                if (i < step) el.classList.add('completed');
+                else if (i === step) el.classList.add('active');
+            }
+        }
+
+        function activatePanel(id) {
+            document.querySelectorAll('.panel-section').forEach(p => { p.classList.remove('active'); p.classList.add('disabled'); });
+            document.getElementById(id).classList.remove('disabled');
+            document.getElementById(id).classList.add('active');
+        }
+
+        async function handleFileUpload(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            appData.file = file;
+            document.getElementById('fileNameDisplay').textContent = file.name;
+            document.getElementById('uploadArea').classList.add('has-file');
+            showStatus('读取文件中...', 'info');
+            try {
+                const data = await file.arrayBuffer();
+                appData.workbook = XLSX.read(data, { type: 'array' });
+                const sheets = appData.workbook.SheetNames;
+                if (sheets.length === 1) selectSheet(sheets[0]);
+                else showSheetSelection(sheets);
+            } catch (err) { showStatus('读取失败: ' + err.message, 'error'); }
+        }
+
+        function showSheetSelection(sheets) {
+            const list = document.getElementById('sheetList');
+            list.innerHTML = '';
+            sheets.forEach((name, i) => {
+                const item = document.createElement('div');
+                item.className = 'sheet-item';
+                item.textContent = '📋 ' + name;
+                item.onclick = () => selectSheet(name);
+                list.appendChild(item);
+            });
+            activatePanel('panelSheet');
+        }
+
+        function selectSheet(name) {
+            appData.selectedSheet = name;
+            const ws = appData.workbook.Sheets[name];
+            
+            // 使用 sheet_to_json 读取，但限制列数
+            const jsonData = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+            
+            // 找到实际有数据的最大列数（检查所有行）
+            let maxCol = 0;
+            for (const row of jsonData) {
+                for (let i = row.length - 1; i >= 0; i--) {
+                    if (row[i] !== null && row[i] !== undefined && row[i] !== '') {
+                        maxCol = Math.max(maxCol, i + 1);
+                        break;
+                    }
+                }
+            }
+            
+            console.log('检测到的实际列数:', maxCol);
+            
+            // 截断每行到实际列数
+            appData.rawData = jsonData.map(row => row.slice(0, maxCol)).filter(row => 
+                row.some(c => c !== null && c !== undefined && c !== '')
+            );
+            
+            console.log('读取后列数:', appData.rawData[0]?.length, '行数:', appData.rawData.length);
+            
+            if (appData.rawData.length < 2) { showStatus('数据为空', 'error'); return; }
+            
+            // 数据清洗：去除包含 NaN 的数据行（保留表头）
+            appData.rawData = appData.rawData.filter((row, i) => {
+                if (i === 0) return true;
+                return row.every(c => c !== null && !isNaN(parseFloat(c)));
+            });
+            
+            console.log('清洗后列数:', appData.rawData[0]?.length, '行数:', appData.rawData.length);
+            
+            showStatus(`已加载: ${name}, ${appData.rawData.length - 1}行, ${appData.rawData[0].length}列`, 'success');
+            activatePanel('panel2');
+            updateStep(2);
+            showColumnSelection();
+        }
+
+        function showColumnSelection() {
+            const headers = appData.rawData[0];
+            const cols = headers.length;
+            const sList = document.getElementById('sensorColList');
+            const tList = document.getElementById('tempColList');
+            sList.innerHTML = ''; tList.innerHTML = '';
+            for (let i = 0; i < cols; i++) {
+                const headerName = headers[i] || `列${i + 1}`;
+                const displayName = String(headerName).trim() || `列${i + 1}`;
+                const sItem = createColItem(i, displayName, 'sensor');
+                const tItem = createColItem(i, displayName, 'temp');
+                sList.appendChild(sItem);
+                tList.appendChild(tItem);
+            }
+        }
+
+        function createColItem(idx, name, type) {
+            const div = document.createElement('div');
+            div.className = 'column-item';
+            div.innerHTML = `<input type="checkbox" id="${type}_${idx}" value="${idx}" onchange="toggleCol(this,'${type}')"><label for="${type}_${idx}" title="${name}">${name}</label>`;
+            div.onclick = (e) => { if (e.target.tagName !== 'INPUT') document.getElementById(`${type}_${idx}`).click(); };
+            return div;
+        }
+
+        function toggleCol(cb, type) {
+            const val = parseInt(cb.value);
+            const item = cb.closest('.column-item');
+            if (cb.checked) { item.classList.add('selected'); type === 'sensor' ? appData.sensorColumns.push(val) : appData.tempColumns.push(val); }
+            else { item.classList.remove('selected'); type === 'sensor' ? appData.sensorColumns = appData.sensorColumns.filter(c => c !== val) : appData.tempColumns = appData.tempColumns.filter(c => c !== val); }
+        }
+
+        function confirmColumnSelection() {
+            if (appData.sensorColumns.length === 0) { showStatus('请至少选择一个传感器列', 'error'); return; }
+            showStatus(`已选${appData.sensorColumns.length}个传感器列`, 'success');
+            activatePanel('panel3');
+            updateStep(3);
+            showCalibInputs();
+        }
+
+        function showCalibInputs() {
+            const container = document.getElementById('calibrationInputs');
+            container.innerHTML = '';
+            appData.sensorColumns.forEach((col, i) => {
+                const div = document.createElement('div');
+                div.className = 'input-group';
+                div.innerHTML = `<label>传感器${i + 1} (列${col + 1})</label><input type="number" id="calib_${i}" value="1" step="0.0001">`;
+                container.appendChild(div);
+            });
+            if (appData.tempColumns.length > 0) document.getElementById('tempFilterGroup').style.display = 'block';
+        }
+
+        function applyCalibration() {
+            appData.calibrationFactors = [];
+            for (let i = 0; i < appData.sensorColumns.length; i++) {
+                const f = parseFloat(document.getElementById(`calib_${i}`).value);
+                if (isNaN(f) || f === 0) { showStatus(`传感器${i + 1}标定系数无效`, 'error'); return; }
+                appData.calibrationFactors.push(f);
+            }
+            if (appData.tempColumns.length > 0) appData.tempWindowSize = parseInt(document.getElementById('tempWindowSize').value) || 1;
+            appData.calibratedData = [];
+            for (let i = 0; i < appData.sensorColumns.length; i++) {
+                const col = appData.sensorColumns[i];
+                const vals = [];
+                for (let r = 1; r < appData.rawData.length; r++) vals.push(parseFloat(appData.rawData[r][col]) || 0);
+                const calibrated = vals.map(v => v / appData.calibrationFactors[i]);
+                const offset = calibrated[0];
+                appData.calibratedData.push(calibrated.map(v => v - offset));
+            }
+            showStatus('标定完成', 'success');
+            activatePanel('panel4');
+            updateStep(4);
+        }
+
+        function processData() {
+            showStatus('处理中...', 'info');
+            const params = { windowSize: parseInt(document.getElementById('windowSize').value) || 10, kSigma: parseFloat(document.getElementById('kSigma').value) || 5, minSegmentLength: parseInt(document.getElementById('minSegmentLength').value) || 5, expandLeft: parseInt(document.getElementById('expandLeft').value) || 15, expandRight: parseInt(document.getElementById('expandRight').value) || 15, smoothMargin: parseInt(document.getElementById('smoothMargin').value) || 10, enableSmoothing: document.getElementById('enableSmoothing').checked };
+            
+            // 读取并格式化时间数据
+            appData.timeData = [];
+            for (let r = 1; r < appData.rawData.length; r++) {
+                const rawTime = appData.rawData[r][appData.timeColumn];
+                appData.timeData.push(formatTime(rawTime));
+            }
+            appData.correctedData = [];
+            appData.jumpSegments = {};
+            for (let i = 0; i < appData.sensorColumns.length; i++) {
+                const result = correctStep(appData.calibratedData[i], params);
+                appData.correctedData.push(result.corrected);
+                appData.jumpSegments[i] = result.segments;
+            }
+            appData.tempRawData = [];
+            appData.tempFilteredData = [];
+            for (let i = 0; i < appData.tempColumns.length; i++) {
+                const col = appData.tempColumns[i];
+                const vals = [];
+                for (let r = 1; r < appData.rawData.length; r++) vals.push(parseFloat(appData.rawData[r][col]) || 0);
+                appData.tempRawData.push(vals);
+                if (appData.tempWindowSize > 1) appData.tempFilteredData.push(movMean(vals, appData.tempWindowSize));
+                else appData.tempFilteredData.push([...vals]);
+            }
+            showCharts();
+            showStatus('处理完成', 'success');
+            // 步骤5、6、7 同时激活，无先后顺序
+            ['panel5', 'panelMachine', 'panelOSS'].forEach(id => {
+                const panel = document.getElementById(id);
+                panel.classList.remove('disabled');
+                panel.classList.add('active');
+            });
+            updateStep(5);
+        }
+
+        // 格式化时间为 yyyy/m/d h:mm:ss
+        function formatTime(value) {
+            if (!value) return '';
+            
+            // 如果已经是字符串格式，尝试解析
+            if (typeof value === 'string') {
+                // 尝试解析各种格式
+                const date = new Date(value);
+                if (!isNaN(date.getTime())) {
+                    return formatDateToString(date);
+                }
+                // 如果是 Excel 序列号字符串
+                const num = parseFloat(value);
+                if (!isNaN(num) && num > 30000) {
+                    return formatExcelDate(num);
+                }
+                return value;
+            }
+            
+            // 如果是数字（Excel 日期序列号）
+            if (typeof value === 'number') {
+                if (value > 30000 && value < 50000) {
+                    return formatExcelDate(value);
+                }
+            }
+            
+            // 如果是 Date 对象
+            if (value instanceof Date) {
+                return formatDateToString(value);
+            }
+            
+            return String(value);
+        }
+        
+        // Excel 日期序列号转字符串
+        function formatExcelDate(excelDate) {
+            const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+            const date = new Date(excelEpoch.getTime() + excelDate * 24 * 60 * 60 * 1000);
+            return formatDateToString(date);
+        }
+        
+        // Date 对象转 yyyy/m/d h:mm:ss
+        function formatDateToString(date) {
+            const year = date.getFullYear();
+            const month = date.getMonth() + 1;
+            const day = date.getDate();
+            const hour = date.getHours();
+            const minute = date.getMinutes();
+            const second = date.getSeconds();
+            return `${year}/${month}/${day} ${hour}:${minute.toString().padStart(2, '0')}:${second.toString().padStart(2, '0')}`;
+        }
+
+        function correctStep(y, params) {
+            const n = y.length;
+            const slopes = new Array(n).fill(0);
+            const x = Array.from({ length: params.windowSize }, (_, i) => i + 1);
+            const xMean = x.reduce((a, b) => a + b, 0) / params.windowSize;
+            const xC = x.map(xi => xi - xMean);
+            const denom = xC.reduce((s, xi) => s + xi * xi, 0);
+            for (let i = params.windowSize - 1; i < n; i++) {
+                const yWin = y.slice(i - params.windowSize + 1, i + 1);
+                const yMean = yWin.reduce((a, b) => a + b, 0) / params.windowSize;
+                const yC = yWin.map(yi => yi - yMean);
+                slopes[i] = xC.reduce((s, xi, j) => s + xi * yC[j], 0) / denom;
+            }
+            const validSlopes = slopes.slice(params.windowSize - 1);
+            const sMean = validSlopes.reduce((a, b) => a + b, 0) / validSlopes.length;
+            const sStd = Math.sqrt(validSlopes.reduce((s, v) => s + (v - sMean) ** 2, 0) / validSlopes.length);
+            const threshold = sStd * params.kSigma;
+            let isJump = slopes.map(s => Math.abs(s) > threshold);
+            let clean = new Array(n).fill(false);
+            let cnt = 0;
+            for (let i = 0; i < n; i++) {
+                if (isJump[i]) cnt++;
+                else { if (cnt >= params.minSegmentLength) for (let j = i - cnt; j < i; j++) clean[j] = true; cnt = 0; }
+            }
+            if (cnt >= params.minSegmentLength) for (let j = n - cnt; j < n; j++) clean[j] = true;
+            let expanded = [...clean];
+            for (let i = 0; i < n; i++) if (clean[i]) { for (let j = Math.max(0, i - params.expandLeft); j <= Math.min(n - 1, i + params.expandRight); j++) expanded[j] = true; }
+            const segments = [];
+            let inJump = false, start = 0;
+            for (let i = 0; i < n; i++) {
+                if (expanded[i] && !inJump) { inJump = true; start = i; }
+                else if (!expanded[i] && inJump) { inJump = false; segments.push({ start: start, end: i - 1 }); }
+            }
+            if (inJump) segments.push({ start: start, end: n - 1 });
+            let yCorr = [...y];
+            for (const seg of segments) {
+                const s = seg.start, e = seg.end;
+                if (s < params.smoothMargin || e + params.smoothMargin >= n) continue;
+                const before = yCorr.slice(s - params.smoothMargin, s).reduce((a, b) => a + b, 0) / params.smoothMargin;
+                const after = yCorr.slice(e + 1, e + params.smoothMargin + 1).reduce((a, b) => a + b, 0) / params.smoothMargin;
+                const delta = after - before;
+                for (let i = e; i < n; i++) yCorr[i] -= delta;
+            }
+            if (params.enableSmoothing) {
+                for (const seg of segments) {
+                    const s = seg.start, e = seg.end;
+                    if (s < 1 || e >= n - 1) continue;
+                    const yStart = yCorr[s - 1], yEnd = yCorr[e + 1];
+                    for (let i = 0; i <= e - s; i++) yCorr[s + i] = yStart + (yEnd - yStart) * (i + 1) / (e - s + 2);
+                }
+            }
+            return { corrected: yCorr, segments: segments };
+        }
+
+        function movMean(arr, win) {
+            const result = [];
+            for (let i = 0; i < arr.length; i++) {
+                const start = Math.max(0, i - Math.floor(win / 2));
+                const end = Math.min(arr.length, i + Math.floor(win / 2) + 1);
+                const sum = arr.slice(start, end).reduce((a, b) => a + b, 0);
+                result.push(sum / (end - start));
+            }
+            return result;
+        }
+
+        function showCharts() {
+            console.log('显示图表，传感器数量:', appData.sensorColumns.length);
+            console.log('时间数据长度:', appData.timeData?.length);
+            console.log('校准数据长度:', appData.calibratedData?.[0]?.length);
+            console.log('修正数据长度:', appData.correctedData?.[0]?.length);
+            
+            const area = document.getElementById('chartsArea');
+            area.innerHTML = '';
+            
+            if (appData.sensorColumns.length === 0) {
+                area.innerHTML = '<div style="text-align:center;padding:50px;">没有选择传感器列</div>';
+                return;
+            }
+            
+            for (let i = 0; i < appData.sensorColumns.length; i++) {
+                const div = document.createElement('div');
+                div.className = 'chart-container';
+                const jumpCount = appData.jumpSegments[i]?.length || 0;
+                div.innerHTML = `<h4>传感器 ${i + 1} (${jumpCount}个跳变)</h4><div style="height:250px;"><canvas id="chart_${i}"></canvas></div>`;
+                area.appendChild(div);
+            }
+            
+            // 延迟渲染图表，确保DOM已更新
+            setTimeout(() => {
+                for (let i = 0; i < appData.sensorColumns.length; i++) {
+                    drawChart(i);
+                }
+                // 温度数据分两张图：原始和滤波后
+                if (appData.tempColumns.length > 0) {
+                    // 原始温度图
+                    const divRaw = document.createElement('div');
+                    divRaw.className = 'chart-container';
+                    divRaw.innerHTML = `<h4>温度数据 - 原始</h4><div style="height:250px;"><canvas id="chart_temp_raw"></canvas></div>`;
+                    area.appendChild(divRaw);
+                    drawTempChartRaw();
+                    
+                    // 滤波后温度图（如果进行了滤波）
+                    if (appData.tempWindowSize > 1) {
+                        const divFiltered = document.createElement('div');
+                        divFiltered.className = 'chart-container';
+                        divFiltered.innerHTML = `<h4>温度数据 - 滤波后 (窗口=${appData.tempWindowSize})</h4><div style="height:250px;"><canvas id="chart_temp_filtered"></canvas></div>`;
+                        area.appendChild(divFiltered);
+                        drawTempChartFiltered();
+                    }
+                }
+            }, 100);
+        }
+
+        function drawChart(idx) {
+            const ctx = document.getElementById(`chart_${idx}`);
+            if (!ctx) {
+                console.error('找不到canvas元素: chart_' + idx);
+                return;
+            }
+            
+            const time = appData.timeData;
+            const raw = appData.calibratedData[idx];
+            const corr = appData.correctedData[idx];
+            
+            console.log(`绘制图表 ${idx}: 时间长度=${time?.length}, 原始数据长度=${raw?.length}, 修正数据长度=${corr?.length}`);
+            
+            if (!time || !raw || !corr || time.length === 0 || raw.length === 0) {
+                console.error('数据为空，无法绘制图表');
+                return;
+            }
+            
+            // 确保数据长度一致
+            const minLen = Math.min(time.length, raw.length, corr.length);
+            const timeSlice = time.slice(0, minLen);
+            const rawSlice = raw.slice(0, minLen);
+            const corrSlice = corr.slice(0, minLen);
+            
+            try {
+                new Chart(ctx, {
+                    type: 'line',
+                    data: { 
+                        labels: timeSlice, 
+                        datasets: [
+                            { label: '原始', data: rawSlice, borderColor: 'rgba(52,152,219,0.6)', pointRadius: 0 }, 
+                            { label: '修正后', data: corrSlice, borderColor: 'rgba(231,76,60,0.9)', pointRadius: 0 }
+                        ] 
+                    },
+                    options: { 
+                        responsive: true, 
+                        maintainAspectRatio: false, 
+                        interaction: { mode: 'index', intersect: false }
+                    }
+                });
+            } catch (err) {
+                console.error('绘制图表失败:', err);
+            }
+        }
+
+        function drawTempChartRaw() {
+            const ctx = document.getElementById('chart_temp_raw');
+            if (!ctx) return;
+            const datasets = [];
+            for (let i = 0; i < appData.tempColumns.length; i++) {
+                datasets.push({ 
+                    label: `温度${i + 1}`, 
+                    data: appData.tempRawData[i], 
+                    borderColor: `hsl(${i * 60},70%,50%)`, 
+                    pointRadius: 0 
+                });
+            }
+            new Chart(ctx, { 
+                type: 'line', 
+                data: { labels: appData.timeData, datasets: datasets }, 
+                options: { responsive: true, maintainAspectRatio: false } 
+            });
+        }
+
+        function drawTempChartFiltered() {
+            const ctx = document.getElementById('chart_temp_filtered');
+            if (!ctx) return;
+            const datasets = [];
+            for (let i = 0; i < appData.tempColumns.length; i++) {
+                datasets.push({ 
+                    label: `温度${i + 1}`, 
+                    data: appData.tempFilteredData[i], 
+                    borderColor: `hsl(${i * 60},70%,50%)`, 
+                    pointRadius: 0 
+                });
+            }
+            new Chart(ctx, { 
+                type: 'line', 
+                data: { labels: appData.timeData, datasets: datasets }, 
+                options: { responsive: true, maintainAspectRatio: false } 
+            });
+        }
+
+        function downloadResults() {
+            const wsData = [];
+            // 表头：时间 + 传感器修正值 + 温度
+            const header = ['时间'];
+            appData.sensorColumns.forEach((c, i) => header.push(`传感器${i + 1}`));
+            appData.tempColumns.forEach((c, i) => header.push(`温度${i + 1}`));
+            wsData.push(header);
+
+            // 数据行：从第2行开始（跳过第1行数据），只包含修正后的传感器值和温度
+            for (let r = 1; r < appData.timeData.length; r++) {
+                const row = [appData.timeData[r]];
+                // 只添加修正后的传感器值（跳过原始值）
+                for (let i = 0; i < appData.sensorColumns.length; i++) {
+                    row.push(appData.correctedData[i][r]);
+                }
+                // 添加温度值
+                for (let i = 0; i < appData.tempColumns.length; i++) {
+                    row.push(appData.tempFilteredData[i][r]);
+                }
+                wsData.push(row);
+            }
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, '处理结果');
+            XLSX.writeFile(wb, '传感器数据处理结果.xlsx');
+            showStatus('下载完成', 'success');
+            
+            // 保存数据供后续合并使用
+            appData.processedData = wsData;
+            
+            // 显示工况数据上传面板
+            document.getElementById('panelMachine').classList.remove('disabled');
+            document.getElementById('panelMachine').classList.add('active');
+        }
+        
+        // ==================== 工况数据合并功能 ====================
+        let machineRawData = null;
+        let processedMachineData = null;
+        let mergedWorkbook = null;
+        
+        async function handleMachineFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            document.getElementById('machineFileName').textContent = file.name;
+            showStatus('读取工况数据...', 'info');
+            try {
+                const data = await file.arrayBuffer();
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheet = workbook.Sheets[workbook.SheetNames[0]];
+                machineRawData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+                document.getElementById('machineConfig').style.display = 'block';
+                showStatus('工况数据已加载', 'success');
+            } catch (err) { showStatus('读取失败: ' + err.message, 'error'); }
+        }
+        
+        // 存储原始表头
+        let machineOriginalHeaders = null;
+        let machineResampledData = null;
+        
+        // 步骤6-1：处理工况数据（使用data-processor2的逻辑）
+        async function processMachineData() {
+            if (!machineRawData) {
+                showStatus('请先上传工况数据', 'error');
+                return;
+            }
+            
+            const startTimeStr = document.getElementById('machineStartTime').value;
+            const interval = parseFloat(document.getElementById('machineInterval').value) || 1;
+            if (!startTimeStr) { showStatus('请输入开始时间', 'error'); return; }
+            
+            const startDate = parseMachineStartTime(startTimeStr);
+            if (!startDate) { showStatus('时间格式错误，请使用 YYYY/MM/DD HH:MM:SS', 'error'); return; }
+            
+            // 禁用处理按钮，防止重复点击
+            document.getElementById('btnProcessMachine').disabled = true;
+            document.getElementById('btnProcessMachine').textContent = '处理中...';
+            
+            // 显示进度条
+            const progressDiv = document.getElementById('mergeProgress');
+            const progressBar = document.getElementById('mergeProgressBar');
+            const progressText = document.getElementById('mergeProgressText');
+            progressDiv.style.display = 'block';
+            progressText.textContent = '正在处理工况数据...';
+            progressBar.style.width = '10%';
+            
+            // 保存原始表头（第2列及以后，即索引1起）
+            const rawHeaders = machineRawData[0];
+            machineOriginalHeaders = rawHeaders.slice(1); // 从第2列开始的所有列
+            const dataColCount = machineOriginalHeaders.length; // 数据列数（可能是6、12或更多）
+            
+            const dataRows = machineRawData.slice(1);
+            const intervalGroups = new Map();
+            const totalRows = dataRows.length;
+            
+            // 按时间间隔分组（分批处理）
+            for (let i = 0; i < totalRows; i++) {
+                const row = dataRows[i];
+                const second = parseFloat(row[0]);
+                if (isNaN(second)) continue;
+                const intervalIndex = Math.floor(second / interval);
+                if (!intervalGroups.has(intervalIndex)) intervalGroups.set(intervalIndex, []);
+                intervalGroups.get(intervalIndex).push(row);
+                
+                // 每10000行更新一次进度
+                if (i % 10000 === 0) {
+                    progressText.textContent = `正在分组... (${i}/${totalRows})`;
+                    progressBar.style.width = `${10 + (i / totalRows) * 40}%`;
+                    await new Promise(r => setTimeout(r, 0));
+                }
+            }
+            
+            // 计算每个时间间隔的均值
+            const resampled = [];
+            const sortedIntervals = Array.from(intervalGroups.keys()).sort((a, b) => a - b);
+            const totalGroups = sortedIntervals.length;
+            
+            progressText.textContent = `正在计算均值... (0/${totalGroups})`;
+            progressBar.style.width = '50%';
+            
+            for (let i = 0; i < totalGroups; i++) {
+                const intervalIndex = sortedIntervals[i];
+                const rows = intervalGroups.get(intervalIndex);
+                const means = [intervalIndex * interval]; // 第0列是起始秒数
+                
+                // 计算所有数据列的均值（动态列数）
+                for (let col = 1; col <= dataColCount; col++) {
+                    let sum = 0, count = 0;
+                    for (const row of rows) {
+                        const val = parseFloat(row[col]);
+                        if (!isNaN(val)) { sum += val; count++; }
+                    }
+                    means.push(count > 0 ? sum / count : 0);
+                }
+                
+                // 计算实际时间
+                const actualTime = new Date(startDate.getTime() + intervalIndex * interval * 1000);
+                const timeStr = formatMachineDateTime(actualTime);
+                means.push(timeStr); // 最后一列是格式化后的时间字符串
+                
+                resampled.push(means);
+                
+                // 每1000组更新一次进度
+                if (i % 1000 === 0) {
+                    progressText.textContent = `正在计算均值... (${i}/${totalGroups})`;
+                    progressBar.style.width = `${50 + (i / totalGroups) * 40}%`;
+                    await new Promise(r => setTimeout(r, 0));
+                }
+            }
+            
+            machineResampledData = resampled;
+            
+            // 保存处理后的工况数据（使用原始表头，从第2列开始，即跳过秒数列）
+            // 注意：machineOriginalHeaders 已经是从原始数据第2列开始的
+            const headers = ['时间', ...machineOriginalHeaders];
+            processedMachineData = [headers];
+            for (const row of resampled) {
+                const dataRow = [row[row.length - 1]]; // 时间字符串（最后一列）
+                // 添加所有数据列（第1到dataColCount列，对应原始数据的第2列起）
+                for (let i = 1; i <= dataColCount; i++) {
+                    dataRow.push(row[i]);
+                }
+                processedMachineData.push(dataRow);
+            }
+            
+            progressText.textContent = '处理完成！';
+            progressBar.style.width = '100%';
+            showStatus('工况数据处理完成', 'success');
+            
+            // 显示下载工况数据按钮和合并按钮
+            document.getElementById('btnDownloadMachine').style.display = 'block';
+            document.getElementById('btnMerge').style.display = 'block';
+            document.getElementById('btnProcessMachine').textContent = '重新处理';
+            document.getElementById('btnProcessMachine').disabled = false;
+        }
+        
+        // 解析开始时间（支持多种格式）
+        function parseMachineStartTime(timeStr) {
+            const patterns = [
+                /(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})\s+(\d{1,2}):(\d{2}):(\d{2})/,
+                /(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})\s+(\d{1,2}):(\d{2})/
+            ];
+
+            for (const pattern of patterns) {
+                const match = timeStr.match(pattern);
+                if (match) {
+                    const year = parseInt(match[1]);
+                    const month = parseInt(match[2]) - 1;
+                    const day = parseInt(match[3]);
+                    const hour = parseInt(match[4]);
+                    const minute = parseInt(match[5]);
+                    const second = match[6] ? parseInt(match[6]) : 0;
+                    return new Date(year, month, day, hour, minute, second);
+                }
+            }
+            return null;
+        }
+        
+        // 格式化时间为 yyyy/m/d h:mm:ss（与传感器数据格式一致）
+        function formatMachineDateTime(date) {
+            const year = date.getFullYear();
+            const month = date.getMonth() + 1;
+            const day = date.getDate();
+            const hour = date.getHours();
+            const minute = String(date.getMinutes()).padStart(2, '0');
+            const second = String(date.getSeconds()).padStart(2, '0');
+            return `${year}/${month}/${day} ${hour}:${minute}:${second}`;
+        }
+        
+        // 步骤6-2：下载工况数据
+        function downloadMachineData() {
+            if (!processedMachineData) {
+                showStatus('请先处理工况数据', 'error');
+                return;
+            }
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(processedMachineData);
+            ws['!cols'] = [{ wch: 30 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 12 }];
+            XLSX.utils.book_append_sheet(wb, ws, '工况数据');
+            XLSX.writeFile(wb, '工况数据_' + new Date().toISOString().split('T')[0] + '.xlsx');
+            showStatus('工况数据下载完成', 'success');
+        }
+        
+        // 步骤6-3：合并数据（按时间匹配，工况列插入到时间列后）
+        async function mergeWithMachineData() {
+            if (!processedMachineData || !machineResampledData) {
+                showStatus('请先处理工况数据', 'error');
+                return;
+            }
+            
+            // 禁用合并按钮
+            document.getElementById('btnMerge').disabled = true;
+            document.getElementById('btnMerge').textContent = '合并中...';
+            
+            const progressDiv = document.getElementById('mergeProgress');
+            const progressBar = document.getElementById('mergeProgressBar');
+            const progressText = document.getElementById('mergeProgressText');
+            progressDiv.style.display = 'block';
+            progressText.textContent = '正在构建时间索引...';
+            progressBar.style.width = '20%';
+            
+            // 获取传感器处理结果
+            let processedData = appData.processedData;
+            if (!processedData) {
+                processedData = generateProcessedData();
+            }
+            
+            // 传感器数据：第0列是时间
+            const sensorHeaders = processedData[0];
+            const sensorRows = processedData.slice(1);
+            
+            // 工况数据：machineResampledData 中最后一列是格式化后的时间字符串，第1到dataColCount列是数据
+            const dataColCount = machineOriginalHeaders.length;
+            // 构建工况数据的时间索引 Map<时间字符串, [工况数据数组]>
+            const machineDataByTime = new Map();
+            for (const row of machineResampledData) {
+                const timeStr = row[row.length - 1]; // 最后一列是格式化后的时间
+                const data = row.slice(1, 1 + dataColCount); // 所有数据列
+                machineDataByTime.set(timeStr, data);
+            }
+            
+            progressText.textContent = '正在按时间匹配合并...';
+            progressBar.style.width = '50%';
+            
+            // 构建合并后的表头：时间 + 工况数据列（原始表头）+ 传感器列（除时间外）
+            const mergedHeaders = [sensorHeaders[0], ...machineOriginalHeaders, ...sensorHeaders.slice(1)];
+            const merged = [mergedHeaders];
+            
+            // 创建空值数组（用于未匹配的情况）
+            const emptyMachineData = new Array(dataColCount).fill('');
+            
+            // 按传感器数据行数遍历，每行匹配对应的工况数据
+            const totalRows = sensorRows.length;
+            for (let i = 0; i < totalRows; i++) {
+                const sensorRow = sensorRows[i];
+                const sensorTime = sensorRow[0]; // 传感器时间
+                const sensorData = sensorRow.slice(1); // 传感器其他数据
+                
+                // 查找对应时间的工况数据
+                const machineData = machineDataByTime.get(sensorTime);
+                
+                if (machineData) {
+                    // 找到匹配：时间 + 工况数据 + 传感器数据
+                    merged.push([sensorTime, ...machineData, ...sensorData]);
+                } else {
+                    // 未找到匹配：时间 + 空值 + 传感器数据
+                    merged.push([sensorTime, ...emptyMachineData, ...sensorData]);
+                }
+                
+                // 每1000行更新进度
+                if (i % 1000 === 0) {
+                    progressText.textContent = `正在合并... (${i}/${totalRows})`;
+                    progressBar.style.width = `${50 + (i / totalRows) * 40}%`;
+                    await new Promise(r => setTimeout(r, 0));
+                }
+            }
+            
+            progressText.textContent = '正在生成文件...';
+            progressBar.style.width = '90%';
+            
+            // 创建工作簿
+            const wb = XLSX.utils.book_new();
+            const ws = XLSX.utils.aoa_to_sheet(merged);
+            XLSX.utils.book_append_sheet(wb, ws, '合并数据');
+            mergedWorkbook = wb;
+            
+            progressText.textContent = '合并完成！';
+            progressBar.style.width = '100%';
+            showStatus('合并完成', 'success');
+            
+            // 显示下载合并文件按钮
+            document.getElementById('btnDownloadMerged').style.display = 'block';
+            document.getElementById('btnMerge').textContent = '重新合并';
+            document.getElementById('btnMerge').disabled = false;
+        }
+        
+        // 步骤6-4：下载合并文件
+        function downloadMergedData() {
+            if (!mergedWorkbook) {
+                showStatus('请先合并数据', 'error');
+                return;
+            }
+            XLSX.writeFile(mergedWorkbook, '合并数据_' + new Date().toISOString().split('T')[0] + '.xlsx');
+            showStatus('合并文件下载完成', 'success');
+        }
+        
+        // 生成处理后的数据（用于合并时未下载的情况）
+        function generateProcessedData() {
+            const wsData = [];
+            const header = ['时间'];
+            appData.sensorColumns.forEach((c, i) => header.push(`传感器${i + 1}`));
+            appData.tempColumns.forEach((c, i) => header.push(`温度${i + 1}`));
+            wsData.push(header);
+
+            for (let r = 1; r < appData.timeData.length; r++) {
+                const row = [appData.timeData[r]];
+                for (let i = 0; i < appData.sensorColumns.length; i++) {
+                    row.push(appData.correctedData[i][r]);
+                }
+                for (let i = 0; i < appData.tempColumns.length; i++) {
+                    row.push(appData.tempFilteredData[i][r]);
+                }
+                wsData.push(row);
+            }
+            return wsData;
+        }
+        
+        async function uploadToOSS() {
+            if (!mergedWorkbook) { showStatus('请先合并数据', 'error'); return; }
+            
+            const bucket = document.getElementById('ossBucket').value.trim();
+            const endpoint = document.getElementById('ossEndpoint').value.trim();
+            const accessKeyId = document.getElementById('ossAccessKeyId').value.trim();
+            const accessKeySecret = document.getElementById('ossAccessKeySecret').value.trim();
+            const path = document.getElementById('ossPath').value.trim() || 'data/';
+            const statusDiv = document.getElementById('ossStatus');
+            
+            if (!bucket || !endpoint || !accessKeyId || !accessKeySecret) {
+                statusDiv.style.display = 'block';
+                statusDiv.style.background = '#f8d7da';
+                statusDiv.style.color = '#721c24';
+                statusDiv.textContent = '请填写完整的OSS配置';
+                return;
+            }
+            
+            const wbout = XLSX.write(mergedWorkbook, { bookType: 'xlsx', type: 'array' });
+            const blob = new Blob([wbout], { type: 'application/octet-stream' });
+            
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = '#fff3cd';
+            statusDiv.style.color = '#856404';
+            statusDiv.textContent = '正在上传...';
+            
+            try {
+                const client = new OSS({
+                    region: endpoint.replace('.aliyuncs.com', ''),
+                    accessKeyId: accessKeyId,
+                    accessKeySecret: accessKeySecret,
+                    bucket: bucket,
+                    secure: true
+                });
+                const filename = '合并数据_' + new Date().toISOString().split('T')[0] + '_' + Date.now() + '.xlsx';
+                const result = await client.put(path + filename, blob);
+                statusDiv.style.background = '#d4edda';
+                statusDiv.style.color = '#155724';
+                statusDiv.innerHTML = `✅ 上传成功！<br><a href="${result.url}" target="_blank">${result.url}</a>`;
+            } catch (error) {
+                statusDiv.style.background = '#f8d7da';
+                statusDiv.style.color = '#721c24';
+                statusDiv.textContent = '上传失败: ' + error.message;
+            }
+        }
+    </script>
+</body>
+</html>
