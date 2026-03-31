@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>传感器数据处理工具 v12</title>
+    <title>传感器数据处理工具 v13</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
@@ -839,21 +839,15 @@
             return null;
         }
         
-        // 格式化时间为 yyyy/mm/dd hh:mm:ss.000 AM/PM（与传感器数据格式一致）
+        // 格式化时间为 yyyy/m/d h:mm:ss（与传感器数据格式一致）
         function formatMachineDateTime(date) {
             const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
-            let hour = date.getHours();
+            const month = date.getMonth() + 1;
+            const day = date.getDate();
+            const hour = date.getHours();
             const minute = String(date.getMinutes()).padStart(2, '0');
             const second = String(date.getSeconds()).padStart(2, '0');
-            
-            const ampm = hour >= 12 ? 'PM' : 'AM';
-            hour = hour % 12;
-            hour = hour ? hour : 12;
-            const hourStr = String(hour).padStart(2, '0');
-            
-            return `${year}/${month}/${day} ${hourStr}:${minute}:${second}.000 ${ampm}`;
+            return `${year}/${month}/${day} ${hour}:${minute}:${second}`;
         }
         
         // 步骤6-2：下载工况数据
