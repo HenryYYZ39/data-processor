@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>传感器数据处理工具 v16</title>
+    <title>传感器数据处理工具 v17</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
@@ -449,9 +449,11 @@
             return String(value);
         }
         
-        // Excel 日期序列号转字符串
+        // Excel 日期序列号转字符串（Excel日期序列号基于本地时间，不需要时区转换）
         function formatExcelDate(excelDate) {
-            const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+            // Excel的日期序列号是基于1900年1月1日（实际上是1899年12月30日）
+            // 且Excel日期序列号表示的是本地时间，不需要考虑时区
+            const excelEpoch = new Date(1899, 11, 30);  // 使用本地时间基准，非UTC
             const date = new Date(excelEpoch.getTime() + excelDate * 24 * 60 * 60 * 1000);
             return formatDateToString(date);
         }
