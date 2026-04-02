@@ -6,7 +6,7 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>传感器数据处理工具 v15</title>
+    <title>传感器数据处理工具 v16</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
     <script src="https://gosspublic.alicdn.com/aliyun-oss-sdk-6.18.0.min.js"></script>
@@ -410,17 +410,26 @@
         function formatTime(value) {
             if (!value) return '';
             
-            // 如果已经是字符串格式，尝试解析
+            // 如果已经是字符串格式
             if (typeof value === 'string') {
-                // 尝试解析各种格式
-                const date = new Date(value);
-                if (!isNaN(date.getTime())) {
-                    return formatDateToString(date);
+                // 检查是否已经是 yyyy/m/d h:mm:ss 格式，直接返回避免时区转换
+                if (/^\d{4}\/\d{1,2}\/\d{1,2} \d{1,2}:\d{2}:\d{2}$/.test(value.trim())) {
+                    return value.trim();
+                }
+                // 检查 yyyy-m-d h:mm:ss 格式，转换为 / 格式
+                const dashMatch = value.trim().match(/^(\d{4})-(\d{1,2})-(\d{1,2}) (\d{1,2}):(\d{2}):(\d{2})$/);
+                if (dashMatch) {
+                    return `${dashMatch[1]}/${parseInt(dashMatch[2])}/${parseInt(dashMatch[3])} ${parseInt(dashMatch[4])}:${dashMatch[5]}:${dashMatch[6]}`;
                 }
                 // 如果是 Excel 序列号字符串
                 const num = parseFloat(value);
                 if (!isNaN(num) && num > 30000) {
                     return formatExcelDate(num);
+                }
+                // 其他格式尝试解析（带时区信息的ISO格式等）
+                const date = new Date(value);
+                if (!isNaN(date.getTime())) {
+                    return formatDateToString(date);
                 }
                 return value;
             }
